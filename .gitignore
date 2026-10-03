@@ -1,0 +1,40 @@
+# Retail game content must be supplied by the user.
+/game_files/
+/SaveData/
+
+# Locally decoded retail video frames.
+/assets/*.yuy2
+/assets/*.rgb
+/assets/*.rgba
+
+# Generated analysis databases and disassembly dumps.
+/analysis/
+
+# Build products and compiler intermediates.
+/bin/
+/build/
+/build-*/
+/.vs/
+/out/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.lib
+*.exp
+*.map
+
+# Runtime diagnostics, captures, and emulator state.
+/*.log
+/*.bmp
+/*.png
+/xbox_kernel.log
+*.dmp
+*.sav
+
+# Local editor and OS metadata.
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+

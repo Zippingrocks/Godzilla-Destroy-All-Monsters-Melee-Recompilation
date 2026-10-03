@@ -1,0 +1,27 @@
+[general]
+show_welcome = false
+
+[input]
+background_input_capture = false
+auto_bind = false
+
+[input.bindings]
+port1_driver = 'usb-xbox-gamepad'
+port1 = 'keyboard'
+
+[display.window]
+startup_size = '640x480'
+vsync = false
+
+[display.ui]
+aspect_ratio = '4x3'
+
+[sys]
+mem_limit = '64'
+
+[sys.files]
+bootrom_path = 'C:\Users\Bilbo\Desktop\Emulation\XEMU\Boot ROM image\mcpx_1.0.bin'
+flashrom_path = 'C:\Users\Bilbo\Desktop\Emulation\XEMU\BIOS\Complex_4627v1.03.bin'
+eeprom_path = '@EEPROM@'
+hdd_path = 'C:\Users\Bilbo\Desktop\Emulation\XEMU\Xemu Halo 2 E3 2003 Map Test 8-8-26\xbox_hdd.qcow2'
+dvd_path = '@DVD@'
