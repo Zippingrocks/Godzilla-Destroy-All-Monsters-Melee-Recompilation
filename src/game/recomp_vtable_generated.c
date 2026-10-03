@@ -2,6 +2,7 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 extern void xbox_irq_wait_for_vblank(void);
 extern void godzilla_d3d_frame_hook(void);
@@ -13,6 +14,17 @@ extern void sub_000EAAA0(void);
 extern void sub_000ECCA0(void);
 
 uint32_t g_mainmenu_bundle_trace;
+
+static int godzilla_frame_trace_enabled(void)
+{
+    static int enabled = -1;
+    if (enabled < 0)
+        enabled = getenv("GODZILLA_TRACE_FRAME") != NULL;
+    return enabled;
+}
+
+#define GODZILLA_FRAME_TRACE(...) \
+    do { if (godzilla_frame_trace_enabled()) fprintf(stderr, __VA_ARGS__); } while (0)
 
 /* Four retail startup vtable bodies that fall in gaps in the seeded function
  * table.  These run once from sub_0002FD80 before the main loop; omitting them
@@ -9933,7 +9945,7 @@ loc_0002FF06: ;
     }
 
 loc_0002FF12: ;
-    fprintf(stderr, "[FRAME-PHASE] limiter-return esp=%08X fp=%u\n", esp, g_fp_top);
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] limiter-return esp=%08X fp=%u\n", esp, g_fp_top);
     fp_pop();
     MEM32(esi + 0x68) = MEM32(esi + 0x68) + 1;
     goto loc_0002FF20;
@@ -9946,7 +9958,7 @@ loc_0002FF20: ;
     PUSH32(esp, 0x0002FF27u); sub_000691C0();
 
 loc_0002FF27: ;
-    fprintf(stderr, "[FRAME-PHASE] accumulator-return esp=%08X fp=%u\n", esp, g_fp_top);
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] accumulator-return esp=%08X fp=%u\n", esp, g_fp_top);
     MEMF(esp + 8) = (float)fp_top(); fp_pop();
 
 loc_0002FF2B: ;
@@ -9954,13 +9966,13 @@ loc_0002FF2B: ;
     PUSH32(esp, 0x0002FF32u); sub_00069470();
 
 loc_0002FF32: ;
-    fprintf(stderr, "[FRAME-PHASE] clock-return esp=%08X fp=%u\n", esp, g_fp_top);
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] clock-return esp=%08X fp=%u\n", esp, g_fp_top);
     MEMF(esi + 0x8C) = (float)fp_top(); fp_pop();
     ecx = edi;
     PUSH32(esp, 0x0002FF3Fu); sub_00069190();
 
 loc_0002FF3F: ;
-    fprintf(stderr, "[FRAME-PHASE] timer-commit-return esp=%08X fp=%u\n", esp, g_fp_top);
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] timer-commit-return esp=%08X fp=%u\n", esp, g_fp_top);
     eax = MEM32(esi + 0x30);
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb);
@@ -9976,7 +9988,7 @@ loc_0002FF46: ;
     }
 
 loc_0002FF56: ;
-    fprintf(stderr, "[FRAME-PHASE] event-dispatch-return esp=%08X fp=%u\n", esp, g_fp_top);
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] event-dispatch-return esp=%08X fp=%u\n", esp, g_fp_top);
     SET_LO8(eax, MEM8(esi + 0x60));
     _fa = (uint32_t)(LO8(eax)) & 0xFFu; _fb = (uint32_t)(LO8(eax)) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb);
@@ -9987,8 +9999,8 @@ loc_0002FF56: ;
 loc_0002FF5F: ;
     ecx = MEM32(0x3E25A8);
     edx = MEM32(ecx);
-    fprintf(stderr, "[FRAME-PHASE] event-tail-enter esp=%08X fp=%u object=%08X vtable=%08X target=%08X\n",
-            esp, g_fp_top, ecx, edx, MEM32(edx + 0x20));
+    GODZILLA_FRAME_TRACE("[FRAME-PHASE] event-tail-enter esp=%08X fp=%u object=%08X vtable=%08X target=%08X\n",
+                         esp, g_fp_top, ecx, edx, MEM32(edx + 0x20));
     esp = esp + 4;
     g_seh_ebp = ebp; g_ebp = ebp; RECOMP_ITAIL(MEM32(edx + 0x20)); return;
 
@@ -10896,8 +10908,8 @@ void sub_0002FF70(void)
     _fas = (int32_t)(int8_t)_fa; _fbs = (int32_t)(int8_t)_fb;
     PUSH32(esp, esi);
     esi = ecx;
-    fprintf(stderr, "[FINALIZER] enter enabled=%02X object=%08X draw=%02X frame=%08X\n",
-            MEM8(0x4B6360), esi, MEM8(esi + 0x88), MEM32(esi + 0x30));
+    GODZILLA_FRAME_TRACE("[FINALIZER] enter enabled=%02X object=%08X draw=%02X frame=%08X\n",
+                         MEM8(0x4B6360), esi, MEM8(esi + 0x88), MEM32(esi + 0x30));
     if (TEST_Z(_fa, _fb)) goto loc_0002FFF6;
 
     eax = MEM32(esi);
@@ -10906,7 +10918,7 @@ void sub_0002FF70(void)
     }
 
 loc_0002FF87: ;
-    fprintf(stderr, "[FINALIZER] eligibility-return eax=%08X esp=%08X\n", eax, esp);
+    GODZILLA_FRAME_TRACE("[FINALIZER] eligibility-return eax=%08X esp=%08X\n", eax, esp);
     _fa = (uint32_t)LO8(eax); _fb = (uint32_t)LO8(eax);
     _fas = (int32_t)(int8_t)_fa; _fbs = (int32_t)(int8_t)_fb;
     if (TEST_Z(_fa, _fb)) goto loc_0002FFF6;
@@ -10933,7 +10945,7 @@ loc_0002FFA6: ;
     PUSH32(esp, 0x0002FFC2u); sub_0010F469();
 
 loc_0002FFC2: ;
-    fprintf(stderr, "[FINALIZER] overlay-format-return esp=%08X\n", esp);
+    GODZILLA_FRAME_TRACE("[FINALIZER] overlay-format-return esp=%08X\n", esp);
     esp += 0x14;
     PUSH32(esp, 0xFFFFFFFFu);
     PUSH32(esp, 0x3DCCCCCD);
@@ -10942,17 +10954,17 @@ loc_0002FFC2: ;
     PUSH32(esp, edx);
     ecx = 0x4B6360;
     MEM32(0x3CFDA0) = 0;
-    fprintf(stderr, "[FINALIZER] overlay-draw-enter esp=%08X\n", esp);
+    GODZILLA_FRAME_TRACE("[FINALIZER] overlay-draw-enter esp=%08X\n", esp);
     PUSH32(esp, 0x0002FFEAu); sub_00108360();
 
 loc_0002FFEA: ;
-    fprintf(stderr, "[FINALIZER] present-enter esp=%08X\n", esp);
+    GODZILLA_FRAME_TRACE("[FINALIZER] present-enter esp=%08X\n", esp);
     PUSH32(esp, 1);
     ecx = 0x4B6360;
     PUSH32(esp, 0x0002FFF6u); sub_00107B50();
 
 loc_0002FFF6: ;
-    fprintf(stderr, "[FINALIZER] exit esp=%08X\n", esp);
+    GODZILLA_FRAME_TRACE("[FINALIZER] exit esp=%08X\n", esp);
     POP32(esp, esi);
     esp += 0x100;
     esp += 4; return;
@@ -11012,8 +11024,8 @@ void sub_00013AD0(void)
     PUSH32(esp, 0x00013AE2u); sub_00105F90();
 
 loc_00013AE2: ;
-    fprintf(stderr, "[RENDER-BRANCH] begin-return eax=%08X object=%08X state=%08X\n",
-            eax, MEM32(esp + 4), MEM32(MEM32(esp + 4) + 0x90));
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] begin-return eax=%08X object=%08X state=%08X\n",
+                         eax, MEM32(esp + 4), MEM32(MEM32(esp + 4) + 0x90));
     _fa = (uint32_t)LO8(eax); _fb = (uint32_t)LO8(eax);
     _fas = (int32_t)(int8_t)_fa; _fbs = (int32_t)(int8_t)_fb;
     if (TEST_NZ(_fa, _fb)) goto loc_00013AE9;
@@ -11073,18 +11085,18 @@ loc_00013B19: ;
     }
     if (TEST_Z(_fa, _fb)) goto loc_00013B2C;
     ecx = 0x4AD508;
-    fprintf(stderr, "[RENDER-BRANCH] movie-enter state=%08X\n", eax);
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] movie-enter state=%08X\n", eax);
     PUSH32(esp, 0x00013B28u); sub_000DDFC0();
-    fprintf(stderr, "[RENDER-BRANCH] movie-return eax=%08X\n", eax);
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] movie-return eax=%08X\n", eax);
     SET_LO8(ebx, LO8(eax));
     goto loc_00013B31;
 
 loc_00013B2C: ;
-    fprintf(stderr, "[RENDER-BRANCH] frontend-enter state=%08X\n", eax);
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] frontend-enter state=%08X\n", eax);
     PUSH32(esp, 0x00013B31u); sub_000136E0();
 
 loc_00013B31: ;
-    fprintf(stderr, "[RENDER-BRANCH] content-return eax=%08X\n", eax);
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] content-return eax=%08X\n", eax);
     ecx = MEM32(esp + 4);
     SET_LO8(edx, MEM8(ecx + 0xA48));
     _fa = (uint32_t)LO8(edx); _fb = (uint32_t)LO8(edx);
@@ -11110,9 +11122,9 @@ loc_00013B67: ;
 
 loc_00013B75: ;
     ecx = 0x4B6360;
-    fprintf(stderr, "[RENDER-BRANCH] end-enter\n");
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] end-enter\n");
     PUSH32(esp, 0x00013B7Fu); sub_00105FB0();
-    fprintf(stderr, "[RENDER-BRANCH] end-return eax=%08X\n", eax);
+    GODZILLA_FRAME_TRACE("[RENDER-BRANCH] end-return eax=%08X\n", eax);
     SET_LO8(eax, LO8(ebx));
     POP32(esp, ebx);
     POP32(esp, ecx);
@@ -11495,7 +11507,8 @@ void sub_0011F200(void)
     #define fp_top() g_fp_stack[g_fp_top]
 
     ++trace_count;
-    if (trace_count <= 16u || (trace_count & (trace_count - 1u)) == 0u) {
+    if (godzilla_frame_trace_enabled() &&
+        (trace_count <= 16u || (trace_count & (trace_count - 1u)) == 0u)) {
         fprintf(stderr,
                 "[XMV-TICK] #%u object=%08X decoder=%08X surface=%08X "
                 "done=%02X error=%02X stream=%08X pts=%08X ret=%08X\n",
@@ -11538,7 +11551,8 @@ void sub_0011F200(void)
 
 loc_0011F22D: ;
     eax = MEM32(esp + 4);
-    if (trace_count <= 16u || (trace_count & (trace_count - 1u)) == 0u) {
+    if (godzilla_frame_trace_enabled() &&
+        (trace_count <= 16u || (trace_count & (trace_count - 1u)) == 0u)) {
         fprintf(stderr,
                 "[XMV-TICK] #%u decode-status=%08X aux=%08X decoder=%08X\n",
                 trace_count, eax, MEM32(esp + 8), MEM32(esi + 0x148));

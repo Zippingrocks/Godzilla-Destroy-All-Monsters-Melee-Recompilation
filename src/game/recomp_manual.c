@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <windows.h>
 
 #include "recomp_types.h"
 
@@ -17,6 +18,86 @@ extern void sub_000399F0(void);
 
 static void godzilla_seed_mainmenu_movie_surface(void);
 static uint32_t godzilla_host_frame;
+
+static int godzilla_trace_enabled(void)
+{
+    static int enabled = -1;
+    if (enabled < 0)
+        enabled = getenv("GODZILLA_TRACE_FRAME") != NULL;
+    return enabled;
+}
+
+static size_t godzilla_decode_mainmenu_xmv(uint8_t *frames, size_t capacity,
+                                           const char *host_root,
+                                           const char *ffmpeg)
+{
+    SECURITY_ATTRIBUTES security = { sizeof(security), NULL, TRUE };
+    STARTUPINFOA startup;
+    PROCESS_INFORMATION process;
+    HANDLE read_pipe = NULL, write_pipe = NULL, error_log = INVALID_HANDLE_VALUE;
+    char command[4096], movie_path[MAX_PATH * 2], log_path[MAX_PATH * 2];
+    size_t received = 0;
+    BOOL started = FALSE;
+
+    sprintf_s(movie_path, sizeof(movie_path),
+              "%s\\game_files\\shelldata\\mainmenu.xmv", host_root);
+    sprintf_s(log_path, sizeof(log_path),
+              "%s\\run-mainmenu-ffmpeg.err.log", host_root);
+    sprintf_s(command, sizeof(command),
+              "\"%s\" -nostdin -hide_banner -loglevel error "
+              "-i \"%s\" -map 0:v:0 -an -sn -dn -frames:v 90 "
+              "-pix_fmt yuyv422 -f rawvideo pipe:1",
+              ffmpeg, movie_path);
+
+    memset(&startup, 0, sizeof(startup));
+    memset(&process, 0, sizeof(process));
+    startup.cb = sizeof(startup);
+    if (!CreatePipe(&read_pipe, &write_pipe, &security, 0) ||
+        !SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0))
+        goto cleanup;
+    error_log = CreateFileA(log_path, GENERIC_WRITE, FILE_SHARE_READ, &security,
+                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (error_log == INVALID_HANDLE_VALUE)
+        goto cleanup;
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = write_pipe;
+    startup.hStdError = error_log;
+    started = CreateProcessA(NULL, command, NULL, NULL, TRUE, CREATE_NO_WINDOW,
+                             NULL, host_root, &startup, &process);
+    CloseHandle(write_pipe);
+    write_pipe = NULL;
+    CloseHandle(error_log);
+    error_log = INVALID_HANDLE_VALUE;
+    if (!started)
+        goto cleanup;
+
+    while (received < capacity) {
+        DWORD chunk = 0;
+        DWORD request = (DWORD)((capacity - received) > 0x00100000u
+                                    ? 0x00100000u : (capacity - received));
+        if (!ReadFile(read_pipe, frames + received, request, &chunk, NULL) ||
+            chunk == 0)
+            break;
+        received += chunk;
+    }
+    CloseHandle(read_pipe);
+    read_pipe = NULL;
+    if (WaitForSingleObject(process.hProcess, 5000) == WAIT_TIMEOUT) {
+        TerminateProcess(process.hProcess, 1);
+        WaitForSingleObject(process.hProcess, 1000);
+    }
+
+cleanup:
+    if (read_pipe) CloseHandle(read_pipe);
+    if (write_pipe) CloseHandle(write_pipe);
+    if (error_log != INVALID_HANDLE_VALUE) CloseHandle(error_log);
+    if (started) {
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    }
+    return received;
+}
 
 /* Feed the retail title's live D3D pushbuffer to the shared NV2A Kelvin
  * translator.  XDK 5233 stores the ring bounds at device +24/+28 and the
@@ -109,9 +190,10 @@ static uint32_t godzilla_replay_pushbuffer(uint32_t start, uint32_t end,
      * frame's clear erases the menu immediately before our host Present. */
     if (cut)
         end = cut;
-    g_kelvin_log_draws = (frame <= 12u) ||
-                         (frame >= 200u && frame <= 204u) ||
-                         (prev_draws == 1u && frame <= 590u);
+    g_kelvin_log_draws = godzilla_trace_enabled() &&
+                         ((frame <= 12u) ||
+                          (frame >= 200u && frame <= 204u) ||
+                          (prev_draws == 1u && frame <= 590u));
     godzilla_pb_walk(start, end, methods, draws, malformed, 0);
     kelvin_end_frame();
     g_kelvin_log_draws = 0;
@@ -120,67 +202,68 @@ static uint32_t godzilla_replay_pushbuffer(uint32_t start, uint32_t end,
 }
 
 /* The retail WMV2/XMV decoder relies heavily on MMX reconstruction routines.
- * Those instructions are not lifted yet, so the menu movie's destination is
- * filled with intermediate macroblock data rather than displayable YUY2.
- * Keep this strictly inside the explicit menu bring-up mode: seed the retail
- * 640x480 YUY2 surface with frames decoded from the title's own MainMenu.XMV.
- * The normal texture setup, coordinates, blending and presentation remain the
- * game's; this bridge can be removed once the MMX instruction family lands. */
+ * Those instructions are not lifted yet, so decode MainMenu.XMV live through
+ * FFmpeg and feed each due YUY2 frame into the retail movie surface.  Unlike
+ * the old frame cache, this reads the original XMV at runtime and paces it from
+ * a monotonic 30 Hz movie clock.  The game's texture state, coordinates,
+ * blending, menu geometry and presentation remain untouched.  This bridge can
+ * be removed once the MMX instruction family lands. */
 static void godzilla_seed_mainmenu_movie_surface(void)
 {
-    enum { FRAME_BYTES = 640 * 480 * 2 };
+    enum { FRAME_BYTES = 640 * 480 * 2, EXPECTED_FRAMES = 90 };
     static uint8_t *frames;
     static size_t frame_count;
-    static size_t frame_cursor;
+    static ULONGLONG movie_start_ms;
     static uint32_t last_seed_frame = UINT32_MAX;
     static int attempted;
 
     if (!getenv("GODZILLA_SKIP_MOVIES"))
         return;
     if (!attempted) {
-        FILE *f;
-        long bytes = 0;
+        const char *ffmpeg = getenv("FFMPEG_PATH");
+        char host_root[MAX_PATH];
+        char default_ffmpeg[MAX_PATH * 2];
+        char *slash;
         attempted = 1;
-        f = fopen("assets\\mainmenu_frames.yuy2", "rb");
-        if (f && fseek(f, 0, SEEK_END) == 0) {
-            bytes = ftell(f);
-            rewind(f);
+        if (!GetModuleFileNameA(NULL, host_root, sizeof(host_root)))
+            host_root[0] = 0;
+        slash = strrchr(host_root, '\\');
+        if (slash)
+            *slash = 0; /* bin */
+        slash = strrchr(host_root, '\\');
+        if (slash)
+            *slash = 0; /* project root */
+        if (!ffmpeg || !*ffmpeg) {
+            sprintf_s(default_ffmpeg, sizeof(default_ffmpeg),
+                      "%s\\tools\\bin\\ffmpeg.exe", host_root);
+            ffmpeg = default_ffmpeg;
         }
-        if (bytes >= FRAME_BYTES && (bytes % FRAME_BYTES) == 0) {
-            frames = (uint8_t *)malloc((size_t)bytes);
-            if (frames && fread(frames, 1, (size_t)bytes, f) == (size_t)bytes)
-                frame_count = (size_t)bytes / FRAME_BYTES;
-        }
-        if (f)
-            fclose(f);
-
-        /* Preserve the original single-frame bridge as a development fallback
-         * when the generated animation cache has not been created yet. */
-        if (!frame_count) {
-            free(frames);
-            frames = (uint8_t *)malloc(FRAME_BYTES);
-            f = frames ? fopen("assets\\mainmenu_frame.yuy2", "rb") : NULL;
-            if (f && fread(frames, 1, FRAME_BYTES, f) == FRAME_BYTES)
-                frame_count = 1;
-            if (f)
-                fclose(f);
-        }
-        if (!frame_count) {
-            fprintf(stderr, "[MAINMENU-HOST-FRAME] unavailable\n");
+        frames = (uint8_t *)malloc((size_t)EXPECTED_FRAMES * FRAME_BYTES);
+        if (frames)
+            frame_count = godzilla_decode_mainmenu_xmv(
+                frames, (size_t)EXPECTED_FRAMES * FRAME_BYTES,
+                host_root, ffmpeg) / FRAME_BYTES;
+        if (frame_count != EXPECTED_FRAMES) {
+            fprintf(stderr,
+                    "[MAINMENU-XMV] runtime decode failed winerr=%lu ffmpeg='%s'\n",
+                    (unsigned long)GetLastError(), ffmpeg);
             free(frames);
             frames = NULL;
         } else {
+            movie_start_ms = GetTickCount64();
             fprintf(stderr,
-                    "[MAINMENU-HOST-FRAME] loaded %u retail XMV frame%s\n",
-                    (unsigned)frame_count, frame_count == 1 ? "" : "s");
+                    "[MAINMENU-XMV] decoded %u runtime frames; 640x480 at 30fps\n",
+                    (unsigned)frame_count);
         }
     }
     /* The same movie texture can be submitted by more than one draw in a
      * pushbuffer.  Advance once per presented game frame, not once per draw. */
     if (frames && last_seed_frame != godzilla_host_frame) {
+        uint64_t due_frame =
+            ((uint64_t)(GetTickCount64() - movie_start_ms) * 30u) / 1000u;
+        size_t frame_index = (size_t)(due_frame % frame_count);
         memcpy((void *)XBOX_PTR(0x01991480u),
-               frames + frame_cursor * FRAME_BYTES, FRAME_BYTES);
-        frame_cursor = (frame_cursor + 1) % frame_count;
+               frames + frame_index * FRAME_BYTES, FRAME_BYTES);
         last_seed_frame = godzilla_host_frame;
     }
 }
@@ -229,7 +312,8 @@ void godzilla_d3d_frame_hook(void)
                     &methods, &draws, &malformed);
             else
                 kelvin_end_frame();
-            if (frame <= 208u || draws || malformed || (frame % 300u) == 0u) {
+            if (malformed || (godzilla_trace_enabled() &&
+                (frame <= 208u || draws || (frame % 300u) == 0u))) {
                 fprintf(stderr,
                         "[PB-LIVE] frame=%u device=%08X ring=%08X-%08X "
                         "cursor=%08X methods=%u draws=%u malformed=%u\n",
@@ -566,14 +650,15 @@ void sub_0010FF6F(void)
     }
 
     ++trace_count;
-    if (trace_count <= 2u) {
+    if (getenv("GODZILLA_TRACE_ALLOC") && trace_count <= 2u) {
         fprintf(stderr,
                 "[FILE-MANAGER-GLOBALS] phase=crt-realloc dsound=%08X "
                 "alloc=%08X alloc-size=%08X free=%08X\n",
                 MEM32(0x001724F4u), MEM32(0x001E135Cu),
                 MEM32(0x001E1380u), MEM32(0x001E1210u));
     }
-    if (trace_count <= 24u || !old_size) {
+    if (getenv("GODZILLA_TRACE_ALLOC") &&
+        (trace_count <= 24u || !old_size)) {
         fprintf(stderr,
                 "[CRT-REALLOC] #%u old=%08X old-size=%u new-size=%u "
                 "result=%08X esp=%08X\n",

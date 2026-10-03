@@ -19,8 +19,8 @@ generated analysis and C sources live here.
 The recompilation now boots through the frontend and reaches a stable, visible
 main menu. The retail menu background and reconstructed menu geometry are
 submitted through the native D3D11/NV2A translation path. The menu's looping
-XMV background currently uses a local host-decoded YUY2 cache while the missing
-MMX video-reconstruction operations are being recovered.
+XMV background is decoded from the original `mainmenu.xmv` at runtime and paced
+at 30 FPS while the missing MMX video-reconstruction operations are recovered.
 
 Completed foundations include:
 
@@ -47,8 +47,8 @@ cmake --build build --config Release
 ```
 
 The executable is written to `bin/godzilla_damm.exe`. To use the current stable
-main-menu path, first generate the local movie cache described in
-[`assets/README.md`](assets/README.md), then launch with:
+main-menu path, install FFmpeg (or place `ffmpeg.exe` in `tools/bin/`) as
+described in [`assets/README.md`](assets/README.md), then launch with:
 
 ```powershell
 $env:GODZILLA_SKIP_MOVIES = '1'

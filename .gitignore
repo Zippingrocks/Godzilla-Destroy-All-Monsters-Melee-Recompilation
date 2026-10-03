@@ -14,6 +14,7 @@
 /bin/
 /build/
 /build-*/
+/tools/bin/
 /.vs/
 /out/
 *.obj
@@ -37,4 +38,3 @@
 Thumbs.db
 *.user
 *.suo
-

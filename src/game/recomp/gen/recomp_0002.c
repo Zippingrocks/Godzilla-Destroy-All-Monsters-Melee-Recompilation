@@ -29016,7 +29016,8 @@ loc_000DF0EA: ;
     goto loc_000DF0E0;
 
 loc_000DF0EE: ;
-    if (getenv("GODZILLA_SKIP_MOVIES") && godzilla_state_trace_count < 256u) {
+    if (getenv("GODZILLA_SKIP_MOVIES") && getenv("GODZILLA_TRACE_FRAME") &&
+        godzilla_state_trace_count < 256u) {
         fprintf(stderr,
                 "[SHELL-STATE] n=%u manager=%08X child=%08X tail=%08X "
                 "vtable=%08X ready-target=%08X state=%08X flags=%02X/%02X\n",
@@ -29053,7 +29054,8 @@ loc_000DF10F: ;
     }
 
 loc_000DF116: ;
-    if (getenv("GODZILLA_SKIP_MOVIES") && godzilla_state_trace_count < 256u)
+    if (getenv("GODZILLA_SKIP_MOVIES") && getenv("GODZILLA_TRACE_FRAME") &&
+        godzilla_state_trace_count < 256u)
         fprintf(stderr, "[SHELL-READY] child=%08X eax=%08X ready=%u\n",
                 edi, eax, (unsigned)LO8(eax));
     _fa = (uint32_t)(LO8(eax)) & 0xFFu; _fb = (uint32_t)(LO8(eax)) & 0xFFu;
