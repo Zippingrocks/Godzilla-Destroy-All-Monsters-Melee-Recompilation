@@ -44630,6 +44630,7 @@ loc_00153C7B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
+#if 0 /* Manual override: sub_00153C8E */
 void sub_00153C8E(void)
 {
     uint32_t ebp;
@@ -45580,6 +45581,7 @@ loc_001543D5: ;
     esp += 36; return; /* ret 32 */
 
 }
+#endif
 
 /**
  * sub_001543DF
@@ -57465,6 +57467,11 @@ loc_00158424: ;
     memcpy((void*)XBOX_PTR(edi), (void*)XBOX_PTR(esi), ecx);
     esi += ecx; edi += ecx; ecx = 0; /* rep movsb */
     MEM32(ebx) = eax;
+    /* On Xbox the DSP consumes this command and clears the mailbox at
+     * 0x810.  The host audio backend does not expose that hardware mailbox,
+     * so acknowledge the completed upload here instead of spinning forever
+     * waiting for a device-side write that cannot occur. */
+    MEM32(ebx) = 0;
 
 loc_00158442: ;
     _fa = (uint32_t)(MEM32(ebx)) & 0xFFFFFFFFu; _fb = (uint32_t)(0) & 0xFFFFFFFFu;
@@ -109765,6 +109772,21 @@ void sub_0018F233(void)
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
 loc_0018F233: ;
+    /* Offline XOnline completion can dispatch this worker with an HRESULT /
+     * sentinel in ECX instead of its 0xBE4-byte state object.  Retail never
+     * dereferences such a value; reject it at the object boundary so the
+     * idle title screen cannot crash while probing unavailable services. */
+    if (!((ecx >= 0x00010000u && ecx < 0x04000000u) ||
+          (ecx >= 0x80010000u && ecx < 0x84000000u))) {
+        static uint32_t invalid_xonline_worker_count;
+        if (invalid_xonline_worker_count++ < 8u)
+            fprintf(stderr,
+                    "[XONLINE-OFFLINE] skip worker this=%08X arg=%08X\n",
+                    ecx, MEM32(esp + 4u));
+        eax = 0u;
+        esp += 8u; /* ret 4 */
+        return;
+    }
     PUSH32(esp, ebp);
     ebp = esp;
     g_ebp = ebp; /* publish frame for frameless callees */

@@ -14,6 +14,7 @@ const targets = [
   "sub_0010FF6F",
   "sub_0012D75A",
   "sub_0012DF80",
+  "sub_00153C8E",
   "sub_00154FF1",
   "sub_001559A9",
   "sub_0015A5AF",

@@ -21,6 +21,11 @@ void sub_000123A0(void);
 void sub_000123E0(void);
 void sub_00012400(void);
 void sub_00012430(void);
+void sub_00012480(void);
+void sub_00015480(void);
+void sub_0001E220(void);
+void sub_000216B0(void);
+void sub_000216F0(void);
 void sub_00012490(void);
 void sub_00012600(void);
 void sub_000126A0(void);
@@ -119,6 +124,7 @@ void sub_00017F00(void);
 void sub_00017F70(void);
 void sub_00017F80(void);
 void sub_00017FC0(void);
+void sub_00018010(void);
 void sub_00018090(void);
 void sub_000180E0(void);
 void sub_00018470(void);
@@ -145,6 +151,7 @@ void sub_0001A6A0(void);
 void sub_0001A8B0(void);
 void sub_0001B050(void);
 void sub_0001B090(void);
+void sub_0001B450(void);
 void sub_0001B5D0(void);
 void sub_0001BBC0(void);
 void sub_0001BC30(void);
@@ -2333,6 +2340,7 @@ void sub_000E8680(void);
 void sub_000E8920(void);
 void sub_000E89C0(void);
 void sub_000E8A60(void);
+void sub_000E8EF0(void);
 void sub_000E8F00(void);
 void sub_000E8FD0(void);
 void sub_000E9060(void);
@@ -5962,6 +5970,162 @@ void sub_00073870(void);
 void sub_00068AE0(void);
 void sub_0003EAB0(void);
 void sub_0002E7C0(void);
+
+void sub_000380E0(void);
+void sub_00038150(void);
+void sub_000381E0(void);
+void sub_00038270(void);
+void sub_000384A0(void);
+void sub_000DAE10(void);
+void sub_000E99E0(void);
+void sub_00100860(void);
+
+void sub_00035ED0(void);
+void sub_00038370(void);
+void sub_0003B740(void);
+void sub_0003F2F0(void);
+void sub_000455E0(void);
+void sub_000EA970(void);
+void sub_0010BC40(void);
+void sub_0010BDB0(void);
+void sub_0011EFC0(void);
+
+void sub_000ECE80(void);
+
+void sub_00033520(void);
+void sub_00040F30(void);
+
+void sub_00042160(void);
+
+void sub_000EFC50(void);
+
+void sub_000FDA20(void);
+void sub_000FDC80(void);
+void sub_000FE220(void);
+void sub_001023B0(void);
+
+void sub_00012C30(void);
+
+void sub_000FA480(void);
+void sub_000FA890(void);
+void sub_00100450(void);
+
+void sub_0018EF0D(void);
+void sub_0019110C(void);
+void sub_00197EE9(void);
+
+void sub_0007261E(void);
+
+void sub_0007253D(void);
+void sub_000725B3(void);
+void sub_00072688(void);
+void sub_000726BC(void);
+void sub_000726F2(void);
+void sub_00072728(void);
+void sub_00072765(void);
+void sub_0007276B(void);
+void sub_00072784(void);
+void sub_00072795(void);
+void sub_000727C5(void);
+void sub_000727F7(void);
+void sub_00072821(void);
+void sub_0007285E(void);
+void sub_00072883(void);
+void sub_0007288C(void);
+void sub_00072897(void);
+
+void sub_00072C55(void);
+
+void sub_00073340(void);
+void sub_00073358(void);
+
+void sub_00072C09(void);
+void sub_00072C1C(void);
+void sub_00072C46(void);
+
+void sub_00072CB4(void);
+
+void sub_00072D35(void);
+
+void sub_000734A7(void);
+void sub_000733CF(void);
+void sub_00072ECA(void);
+
+void sub_00073890(void);
+void sub_0010ED60(void);
+
+void sub_0015CF52(void);
+void sub_001D9B1C(void);
+void sub_001DA52D(void);
+void sub_001DCF6C(void);
+
+void sub_0015D0AB(void);
+
+void sub_0001C4A0(void);
+void sub_0005E9A0(void);
+
+void sub_0004FA20(void);
+void sub_00050B70(void);
+void sub_00055BF0(void);
+void sub_00059470(void);
+void sub_0005ECD0(void);
+void sub_0005FBA0(void);
+void sub_00060CB0(void);
+void sub_00062310(void);
+void sub_00063260(void);
+void sub_00063C50(void);
+void sub_00064720(void);
+void sub_00064BF0(void);
+void sub_00064DC0(void);
+void sub_000653B0(void);
+
+void sub_0004F750(void);
+void sub_00050200(void);
+void sub_000604D0(void);
+void sub_000608D0(void);
+void sub_00063EB0(void);
+void sub_000643E0(void);
+
+void sub_00102390(void);
+
+void sub_000EF100(void);
+
+void sub_000E9A80(void);
+
+void sub_000EF0A0(void);
+
+void sub_000E4730(void);
+
+void sub_000141E0(void);
+
+void sub_00033F40(void);
+
+void sub_000154B0(void);
+void sub_00034570(void);
+void sub_00015040(void);
+
+void sub_00018E50(void);
+
+void sub_000E4820(void);
+void sub_000F1070(void);
+
+void sub_000E48C3(void);
+void sub_000E48E7(void);
+
+void sub_000F0C30(void);
+void sub_000E7340(void);
+void sub_000E78E0(void);
+
+void sub_0003EF60(void);
+
+void sub_000DE160(void);
+void sub_000BB190(void);
+void sub_0008B050(void);
+
+void sub_0007E880(void);
+void sub_000C1DD0(void);
+
+void sub_000E9E60(void);
 
 /* Unresolved call targets (stubbed) */
 void sub_0001874C(void);

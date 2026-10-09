@@ -10,6 +10,12 @@
 #include <stdlib.h>
 
 extern uint32_t g_mainmenu_bundle_trace;
+/* Host-decoded XMV completion is delivered synchronously, while the retail
+ * shell normally receives its state-4 commit through an asynchronous tail.
+ * Keep this one-shot marker narrow to that natural startup transition. */
+static volatile uint32_t godzilla_startup_title_transition;
+static int godzilla_startup_sequence_started;
+static volatile uint32_t godzilla_playerselect_active;
 
 /**
  * sub_000C2C10
@@ -21565,16 +21571,6 @@ loc_000DB8ED: ;
     esp += 4; return; /* ret */
 
 loc_000DB8FD: ;
-    /* PC bring-up has no interactive startup/profile movie chain yet.  Once
-     * the one-shot startup sentinel (state 8) completes, enter the title's
-     * real MainMenuScreen state (1) instead of PlayerSelect (0x10).  This is
-     * deliberately scoped to the explicit movie-skip launch mode; every menu
-     * constructor, bundle load and render callback remains retail code. */
-    if (getenv("GODZILLA_SKIP_MOVIES") && MEM32(esi + 0x154) == 8u) {
-        eax = 1u;
-        POP32(esp, esi);
-        esp += 4; return;
-    }
     eax = MEM32(esi + 0x154);
     eax++;
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(0xD) & 0xFFFFFFFFu;
@@ -26096,7 +26092,9 @@ loc_000DDC89: ;
  */
 void sub_000DDCA0(void)
 {
+    extern volatile uint32_t godzilla_profile_accept_transition;
     uint32_t ebp;
+    uint32_t ddc_requested_state;
     uint32_t ddc_expected_esi = 0;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
@@ -26113,6 +26111,7 @@ void sub_000DDCA0(void)
 loc_000DDCA0: ;
     PUSH32(esp, ebp);
     ebp = esp;
+    ddc_requested_state = MEM32(ebp + 8);
     g_ebp = ebp; /* publish frame for frameless callees */
     esp = esp - 0x24;
     edx = 0; /* xor self */
@@ -26284,6 +26283,57 @@ loc_000DDDFC: ;
 
 loc_000DDE03: ;
     DDC_ESI_CHECK("000DDE03");
+    /* The explicit terminal event requests state 4.  In the recomp the
+     * missing async shell commit makes DB000 return zero, which otherwise
+     * falls through to the black state-16 target.  Honor only this marked,
+     * natural startup request; all later menu transitions retain retail
+     * behavior. */
+    if (godzilla_startup_title_transition != 0u &&
+        ddc_requested_state == 4u) {
+        if (eax == 0u) {
+            static const char mode_name[] = "TeamBattle";
+            static const char city_name[] = "SanFrancisco";
+            static const char monster_names[4][16] = {
+                "Rodan_0", "Anguirus_1", "Destoroyah_2", "MGhidorah_3"
+            };
+            static const char monster_ids[4][16] = {
+                "rodan", "anguirus", "destoroyah", "mghidorah"
+            };
+            uint32_t i;
+            eax = 4u;
+            /* DB000 normally receives a SHE2 async commit which supplies the
+             * attract-match descriptor before returning state 4.  The host
+             * movie bridge has no SHE2 producer yet, so install the same
+             * retail-shaped descriptor needed by the genuine world loader.
+             * These are identifiers consumed from the game's own bundles;
+             * rendering, animation and simulation remain entirely retail. */
+            MEM32(0x002C2B10u) = 2u;
+            MEM8(0x002C2B14u) = 1u;
+            memcpy(XBOX_PTR(0x002C2B15u), mode_name, sizeof(mode_name));
+            MEM32(0x002C2C78u) = 1u;
+            MEM32(0x002C2C7Cu) = 2u;
+            memcpy(XBOX_PTR(0x002C2C80u), city_name, sizeof(city_name));
+            MEM32(0x002C2D84u) = 1u;
+            MEM32(0x002C2D90u) = 4u;
+            MEMF(0x002C2D98u) = 60.0f;
+            MEM32(0x002C2D9Cu) = 1u;
+            MEM32(0x002C2DA0u) = 1u;
+            for (i = 0; i < 4u; ++i) {
+                uint32_t record = 0x002C2D94u + i * 0x19Cu;
+                memcpy(XBOX_PTR(record + 0xD4u), monster_ids[i],
+                       strlen(monster_ids[i]) + 1u);
+                memcpy(XBOX_PTR(record + 0xF3u), monster_names[i],
+                       strlen(monster_names[i]) + 1u);
+            }
+            fprintf(stderr,
+                    "[STARTUP-ATTRACT] restored retail-shaped TeamBattle/SanFrancisco descriptor\n");
+        }
+        godzilla_startup_title_transition = 0u;
+    }
+    fprintf(stderr,
+            "[DDC-STATE-RESULT] eax=%08X tag=%08X value=%08X transition=%u token=%08X\n",
+            eax, MEM32(0x4A9630), MEM32(0x4A9634),
+            (unsigned)godzilla_profile_accept_transition, MEM32(0x2C2ACC));
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* test eax, eax (32-bit) */
     MEM32(esi + 0x154) = eax;
@@ -26302,6 +26352,8 @@ loc_000DDE0E: ;
 loc_000DDE23: ;
     DDC_ESI_CHECK("000DDE23");
     eax = MEM32(0x2C2ACC);
+    if (godzilla_profile_accept_transition != 0u)
+        eax = 0;
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* test eax, eax (32-bit) */
     if (TEST_Z(_fa, _fb)) goto loc_000DDE36; /* je: equal / zero */
@@ -28390,6 +28442,7 @@ void sub_000DED00(void)
     uint32_t trace_id;
     uint32_t trace_owner;
     uint32_t trace_requested;
+    uint32_t trace_current;
     uint32_t trace_return;
     ebp = g_ebp;  /* frameless: caller's frame */
     int _flags = 0; /* fallback flag var */
@@ -28404,6 +28457,7 @@ loc_000DED00: ;
     trace_id = ++trace_count;
     trace_owner = ecx;
     trace_requested = MEM32(esp + 4);
+    trace_current = MEM32(trace_owner + 0x154);
     trace_return = MEM32(esp);
     if (trace_id <= 32) {
         fprintf(stderr,
@@ -28420,6 +28474,36 @@ loc_000DED00: ;
     PUSH32(esp, 0x000DED0Eu); sub_000DDCA0(); /* call 0x000DDCA0 */
 
 loc_000DED0E: ;
+    if (godzilla_startup_sequence_started &&
+        trace_current == 8u && trace_requested == 0x10u && eax == 0u) {
+        /* The genuine title controller requests state 16 on A.  Retail's
+         * async SHEL resolver preserves that transition; the recomp currently
+         * has no producer for its result token, so DDCA0 returns zero and
+         * DED00 recursively rebuilds state 8 (the startup playlist).  Keep
+         * the retail request at this resolver boundary so its real state-16
+         * constructor can install Select Profile. */
+        eax = 0x10u;
+        MEM32(esi + 0x154u) = eax;
+        godzilla_playerselect_active = 1u;
+        fprintf(stderr,
+                "[PROFILE-TRANSITION] preserved title request state 16\n");
+        fflush(stderr);
+    }
+    if (godzilla_startup_title_transition == 2u &&
+        trace_requested == 0xFFFFFFFFu) {
+        /* Host-decoded startup movies have no SHEL message producer.  Xemu
+         * checkpoints place PRESS START in state 4; state 1 is reached only
+         * after profile acceptance (state 16 is its transient transition).
+         * State 4 has no constructor in DED00's retail switch table: it is a
+         * marker used while the state-1 front-end child remains alive.  Build
+         * that real child here; the host handoff commits marker 4 only after
+         * DED00 has attached it, avoiding the destructive state-4 teardown. */
+        eax = 1u;
+        MEM32(esi + 0x154u) = 1u;
+        fprintf(stderr,
+                "[STARTUP-HANDOFF] constructing retail front-end child before PRESS START marker\n");
+        fflush(stderr);
+    }
     if (trace_id <= 4) {
         fprintf(stderr,
                 "[DED-STACK] #%u loc=000DED0E entry=%08X esp=%08X delta=%d entry-esi=%08X esi=%08X top=%08X\n",
@@ -28979,6 +29063,8 @@ loc_000DF05F: ;
 void sub_000DF0C0(void)
 {
     static RECOMP_TLS uint32_t godzilla_state_trace_count;
+    static RECOMP_TLS uint32_t godzilla_state_poll_count;
+    static RECOMP_TLS uint32_t godzilla_tail_ready_trace;
     uint32_t ebp;
     ebp = g_ebp;  /* frameless: caller's frame */
     int _flags = 0; /* fallback flag var */
@@ -29016,6 +29102,10 @@ loc_000DF0EA: ;
     goto loc_000DF0E0;
 
 loc_000DF0EE: ;
+    ++godzilla_state_poll_count;
+    /* Presentation completion belongs to sub_000EF2F0.  Do not infer it from
+     * an empty async-operation pointer: settled menu presentations also have
+     * no inner job and must remain alive. */
     if (getenv("GODZILLA_SKIP_MOVIES") && getenv("GODZILLA_TRACE_FRAME") &&
         godzilla_state_trace_count < 256u) {
         fprintf(stderr,
@@ -29024,6 +29114,15 @@ loc_000DF0EE: ;
                 godzilla_state_trace_count++, esi, ecx, edi, MEM32(edi),
                 MEM32(MEM32(edi) + 0x1C), MEM32(esi + 0x154),
                 MEM8(esi + 0x168), MEM8(esi + 0x169));
+    }
+    if (getenv("GODZILLA_SKIP_MOVIES") &&
+        (godzilla_state_poll_count % 600u) == 0u) {
+        fprintf(stderr,
+                "[SHELL-LIVE] poll=%u manager=%08X state=%08X child=%08X "
+                "tail=%08X vt=%08X ac=%02X c8=%02X done=%02X inner=%08X\n",
+                godzilla_state_poll_count, esi, MEM32(esi + 0x154), ecx, edi,
+                MEM32(edi), MEM8(edi + 0xAC), MEM8(edi + 0xC8),
+                MEM8(edi + 0x1AC), MEM32(edi + 0x1E4));
     }
     _fa = (uint32_t)(edi) & 0xFFFFFFFFu; _fb = (uint32_t)(ecx) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp edi, ecx (32-bit) */
@@ -29082,6 +29181,14 @@ loc_000DF12B: ;
     }
 
 loc_000DF132: ;
+    if (godzilla_tail_ready_trace < 48u) {
+        fprintf(stderr,
+                "[SHELL-TAIL-READY] #%u child=%08X tail=%08X vt=%08X eax=%08X ready=%u done=%02X inner=%08X\n",
+                ++godzilla_tail_ready_trace, ecx, edi, MEM32(edi), eax,
+                (unsigned)LO8(eax), MEM8(edi + 0x1AC),
+                MEM32(edi + 0x1E4));
+        fflush(stderr);
+    }
     _fa = (uint32_t)(LO8(eax)) & 0xFFu; _fb = (uint32_t)(LO8(eax)) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb); /* test LO8(eax), LO8(eax) (8-bit) */
     if (TEST_Z(_fa, _fb)) goto loc_000DF14A; /* je: equal / zero */
@@ -29100,6 +29207,21 @@ loc_000DF142: ;
     PUSH32(esp, ebx);
     ecx = eax;
     PUSH32(esp, 0x000DF14Au); sub_000DA460(); /* call 0x000DA460 */
+
+    /* Host-side presentation loads can complete synchronously.  The render
+     * path may append another completed node before the next shell tick, so
+     * retiring only one tail per tick permanently starves the interactive
+     * controller at the head.  Continue the retail ready/remove loop while
+     * more queued nodes remain; a non-ready tail still falls through after
+     * its normal readiness test, and the head uses the original transition
+     * path unchanged. */
+    if (getenv("GODZILLA_SKIP_MOVIES") && MEM32(esi + 0x158) != 0u) {
+        uint32_t godzilla_head = MEM32(esi + 0x158);
+        if (MEM32(godzilla_head + 0xA4) != 0u ||
+            (MEM32(godzilla_head) == 0x001F9220u &&
+             MEM8(godzilla_head + 0xAC) != 0u))
+            goto loc_000DF0CA;
+    }
 
 loc_000DF14A: ;
     /* The native bring-up path intentionally jumps over the interactive
@@ -81810,6 +81932,11 @@ loc_000FEC0A: ;
 void sub_000FEC20(void)
 {
     uint32_t ebp;
+    uint32_t fec_entry_sp = esp;
+    uint32_t fec_this = ecx;
+    uint32_t fec_saved_ebx = ebx;
+    uint32_t fec_saved_esi = esi;
+    uint32_t fec_saved_edi = edi;
     ebp = g_ebp;  /* frameless: caller's frame */
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
@@ -83817,13 +83944,14 @@ loc_000FFCF5: ;
     PUSH32(esp, 0x000FFCFEu); sub_00070C60(); /* call 0x00070C60 */
 
 loc_000FFCFE: ;
-    POP32(esp, edi);
-    eax = esi;
-    POP32(esp, esi);
-    POP32(esp, ebx);
-    _cf = (int)((((uint64_t)(esp) + (uint64_t)(0x394)) >> 32) & 1);
-    esp = esp + 0x394;
-    esp += 4; return; /* ret */
+    /* Keep the retail constructor ABI when an unresolved nested callback
+     * temporarily leaves the synthetic stack imbalanced. */
+    eax = fec_this;
+    ebx = fec_saved_ebx;
+    esi = fec_saved_esi;
+    edi = fec_saved_edi;
+    esp = fec_entry_sp + 4;
+    return; /* ret */
 
     #undef fp_push
     #undef fp_pop
@@ -87799,6 +87927,12 @@ loc_00102AC6: ;
  * CC: thiscall, 0 params, returns int_or_void
  * Frame: standard_frame
  */
+volatile uint32_t godzilla_mainmenu_hold_active;
+extern volatile uint32_t godzilla_mainmenu_render_object;
+static uint32_t godzilla_startup_sequence_owner;
+static uint32_t godzilla_startup_profile_owner;
+static uint32_t godzilla_mainmenu_sequence_owner;
+
 void sub_00102B00(void)
 {
     uint32_t ebp;
@@ -87821,6 +87955,24 @@ loc_00102B00: ;
     eax = MEM32(ebp + 8);
     PUSH32(esp, esi);
     esi = ecx;
+    /* Identify and consume the recomp's premature Main Menu attract-complete
+     * pulse before the retail callback tears down its current child.  Doing
+     * this after the cleanup block is too late: the menu object has already
+     * been destroyed and Attract.bdl begins loading. */
+    if (godzilla_startup_sequence_started &&
+        godzilla_startup_profile_owner &&
+        !godzilla_mainmenu_sequence_owner &&
+        esi != godzilla_startup_sequence_owner &&
+        esi != godzilla_startup_profile_owner)
+        godzilla_mainmenu_sequence_owner = esi;
+    if ((esi == godzilla_mainmenu_sequence_owner ||
+         godzilla_mainmenu_render_object != 0u) &&
+        (MEM32(eax) == 6u || MEM32(eax) == 7u)) {
+        godzilla_mainmenu_sequence_owner = esi;
+        godzilla_mainmenu_hold_active = 1u;
+        MEM8(esi + 0xC8u) = 0u;
+        goto loc_00102C57;
+    }
     MEM32(esi + 0xD4) = eax;
     eax = MEM32(esi + 0xC0);
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
@@ -87856,7 +88008,79 @@ loc_00102B44: ;
     MEM8(esi + 0xC8) = 1;
     ecx = MEM32(eax);
     ecx--;
-    if (getenv("GODZILLA_SKIP_MOVIES"))
+    {
+        static unsigned godzilla_startup_event_trace;
+        if (godzilla_startup_event_trace++ < 16u) {
+            fprintf(stderr,
+                    "[STARTUP-EVENT] index=%u raw=%u skip-env=%s this=%08X event=%08X\n",
+                    ecx, ecx + 1u,
+                    getenv("GODZILLA_SKIP_MOVIES") ? "present" : "absent",
+                    esi, eax);
+            fflush(stderr);
+        }
+    }
+    /* Retail replaces the startup controller once when Start advances to
+     * Select Profile.  Remember that immediate successor separately: it must
+     * not replay the movie switch, while the later main-menu controller must
+     * be allowed to process its own events. */
+    if (godzilla_startup_sequence_started &&
+        !godzilla_startup_profile_owner &&
+        esi != godzilla_startup_sequence_owner)
+        godzilla_startup_profile_owner = esi;
+    if (godzilla_startup_sequence_started &&
+        godzilla_startup_profile_owner &&
+        !godzilla_mainmenu_sequence_owner &&
+        esi != godzilla_startup_sequence_owner &&
+        esi != godzilla_startup_profile_owner)
+        godzilla_mainmenu_sequence_owner = esi;
+    if (godzilla_startup_sequence_started && godzilla_playerselect_active &&
+        esi != godzilla_startup_sequence_owner &&
+        esi != godzilla_startup_profile_owner) {
+        /* PlayerSelect owns the same playlist callback class as the boot
+         * shell.  Its early raw 2/3 completion records describe embedded
+         * presentation nodes, not requests to replay Toho/Pipeworks.  Xemu
+         * remains on Select Profile in state 16 here, so consume these
+         * records while leaving the real PlayerSelect child installed. */
+        MEM8(esi + 0xC8u) = 1u;
+        goto loc_00102C57;
+    }
+    if (esi == godzilla_mainmenu_sequence_owner && ecx == 6u) {
+        /* The recompiled async tail reports the attract-mode completion event
+         * immediately after the first three menu frames.  Retail keeps the
+         * menu interactive until its idle timer expires.  Consume this early
+         * completion on the identified main-menu controller; user input can
+         * now run through the recovered player dispatch instead of being
+         * forced into state 4/loading. */
+        godzilla_mainmenu_hold_active = 1u;
+        MEM8(esi + 0xC8) = 0;
+        goto loc_00102C57;
+    }
+    if (godzilla_startup_sequence_started &&
+        (esi == godzilla_startup_profile_owner ||
+         (esi == godzilla_startup_sequence_owner && ecx <= 4u))) {
+        /* The front end is already alive beneath the host-decoded startup
+         * overlay.  Consume late events from its original controller and
+         * every playlist event from its one replacement/profile controller
+         * without constructing a second movie list.  Xemu leaves Select
+         * Profile stable here; letting that replacement process raw 6/7
+         * walks the unrelated Top Ten playlist.  Later controllers, including
+         * state 1's main menu, keep their own events. */
+        MEM8(esi + 0xC8) = 1;
+        goto loc_00102C57;
+    }
+    if (!godzilla_startup_sequence_started &&
+        !getenv("GODZILLA_SKIP_MOVIES") && ecx <= 4u) {
+        extern void godzilla_host_xmv_begin_sequence(void);
+        godzilla_startup_sequence_started = 1;
+        godzilla_startup_sequence_owner = esi;
+        godzilla_host_xmv_begin_sequence();
+        /* Reuse the established no-MMX decoder completion pulses while the
+         * original XMV frames remain visible through the host overlay. */
+        goto loc_godzilla_frontend_construct;
+    }
+    if ((godzilla_startup_sequence_started &&
+         esi == godzilla_startup_sequence_owner && ecx == 5u) ||
+        getenv("GODZILLA_SKIP_MOVIES"))
         goto loc_godzilla_frontend_construct;
     _fa = (uint32_t)(ecx) & 0xFFFFFFFFu; _fb = (uint32_t)(6) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp ecx, 6 (32-bit) */
@@ -87891,12 +88115,24 @@ loc_00102B59: ;
         PUSH32(esp, 0x1F9320);
         goto loc_00102BA6;
 
-    case 3: /* gzintro */
-        /* The final GZINTRO movie reaches an unsupported audio teardown
-         * callback.  Enter the retail case-5 front-end construction directly
-         * after the four earlier startup movies instead of returning a null
-         * player and waiting forever for another sequence event. */
-        goto loc_godzilla_frontend_construct;
+    case 3: { /* gzintro: retail's separate jump-table fragment at 102C64 */
+        uint32_t _icall_esp;
+        uint32_t _icall_target;
+        edx = MEM32(esi + 0xC4);
+        PUSH32(esp, 0);
+        PUSH32(esp, edx);
+        PUSH32(esp, 9);
+        PUSH32(esp, 0x1F9308);
+        ecx = MEM32(0x4BB270);
+        eax = MEM32(ecx);
+        _icall_esp = g_esp;
+        _icall_target = MEM32(eax + 0x10);
+        PUSH32(esp, 0x00102C79u);
+        RECOMP_ICALL_SAFE(_icall_target, _icall_esp);
+        MEM32(esi + 0xC0) = eax;
+        MEM8(esi + 0xC8) = 1;
+        goto loc_00102BBE;
+    }
 
     case 4: /* dolby */
         edx = MEM32(esi + 0xC4);
@@ -88060,6 +88296,57 @@ loc_00102C57: ;
     #undef fp_top
     #undef fp_st
     #undef fp_st1
+}
+
+/* Complete the host-decoded startup playlist through the retail front-end
+ * state resolver.  The front end is constructed beneath the overlay by the
+ * first playlist event.  Feeding that original controller a synthetic raw=6
+ * record at EOF makes its retained +0xD4 pointer immediately consume the
+ * adjacent raw=7 attract record, selecting state 4 (a demo battle) instead of
+ * the loaded-profile state.  The natural path observed from the replacement
+ * controller commits state 4 for PRESS START; the host path has no guest SHEL
+ * producer, so commit that Xemu-verified state and build the genuine title
+ * presentation.  Preserve the interrupted guest register
+ * frame around this host boundary. */
+void godzilla_complete_startup_sequence(void)
+{
+    extern volatile uint32_t godzilla_profile_accept_transition;
+    uint32_t saved_eax, saved_ebx, saved_ecx, saved_edx;
+    uint32_t saved_esi, saved_edi, saved_esp, saved_ebp, saved_seh_ebp;
+    uint32_t call_frame;
+    if (!godzilla_startup_sequence_owner)
+        return;
+    saved_eax = g_eax; saved_ebx = g_ebx;
+    saved_ecx = g_ecx; saved_edx = g_edx;
+    saved_esi = g_esi; saved_edi = g_edi;
+    saved_esp = g_esp; saved_ebp = g_ebp;
+    saved_seh_ebp = g_seh_ebp;
+    call_frame = 0x0075FC00u;
+    g_esp = call_frame;
+    MEM32(0x002C2ACCu) = 0u;
+    godzilla_profile_accept_transition = 0u;
+    godzilla_startup_title_transition = 2u;
+    PUSH32(g_esp, 0xFFFFFFFFu);
+    g_ecx = 0x004AD508u;
+    PUSH32(g_esp, 0x00102C57u);
+    fprintf(stderr,
+            "[STARTUP-HANDOFF] constructing retail front end for PRESS START\n");
+    fflush(stderr);
+    sub_000DED00();
+    /* DED00 state 4 deliberately has no constructor.  Keep the newly built
+     * state-1 front-end child and its matching owner state here.  The retail
+     * controller will apply the title/profile marker at its own event edge;
+     * assigning 4 early makes the state poll interpret PRESS START as a demo
+     * battle and immediately load Loading.bdl. */
+    fprintf(stderr,
+            "[STARTUP-HANDOFF] retained front-end child for PRESS START\n");
+    fflush(stderr);
+    godzilla_startup_title_transition = 0u;
+    g_eax = saved_eax; g_ebx = saved_ebx;
+    g_ecx = saved_ecx; g_edx = saved_edx;
+    g_esi = saved_esi; g_edi = saved_edi;
+    g_esp = saved_esp; g_ebp = saved_ebp;
+    g_seh_ebp = saved_seh_ebp;
 }
 
 /**
@@ -112908,7 +113195,7 @@ void sub_0010F710(void)
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: standard_frame
  */
-void sub_0010F750(void)
+void sub_0010F750_generated_unused(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -120156,6 +120443,7 @@ loc_00111B9B: ;
  */
 void sub_00111B9E(void)
 {
+    uint32_t godzilla_crt_lock_index;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
@@ -120163,6 +120451,38 @@ void sub_00111B9E(void)
 
 loc_00111B9E: ;
     eax = MEM32(esp + 4);
+    godzilla_crt_lock_index = eax;
+    /* MSVCRT's internal lock table only contains the small fixed lock-number
+     * set used by this executable.  A DPC which overlaps the frontend state
+     * handoff can currently reach this helper with a stale guest stack word;
+     * indexing the table with that value wraps into an invalid host handle.
+     * Reject only values outside the table's 64-entry allocation.  Valid
+     * retail calls (observed lock numbers 0x0a, 0x0d and 0x11) are unchanged. */
+    if (eax >= 0x40u) {
+        static unsigned godzilla_invalid_crt_lock_count;
+        if (godzilla_invalid_crt_lock_count++ < 16u) {
+            fprintf(stderr,
+                    "[CRT-LOCK-GUARD] invalid-index=%08X esp=%08X ret=%08X\n",
+                    eax, esp, MEM32(esp));
+            fflush(stderr);
+        }
+        esp += 4; return;
+    }
+    /* The interrupt/DPC dispatcher uses the dedicated 0x007xxxxx guest stack.
+     * Its translated callbacks can enter the CRT locale helper while the main
+     * thread is replacing the frontend object, but this synthetic interrupt
+     * context has no retail CRT thread state to lock.  Xbox runs that path at
+     * DISPATCH_LEVEL; treating its process-wide CRT lock as uncontended avoids
+     * dereferencing a half-constructed critical-section object while keeping
+     * ordinary main/worker-thread locking intact. */
+    if (esp >= 0x00700000u && esp < 0x00800000u) {
+        static unsigned godzilla_dpc_crt_lock_skip_count;
+        if (godzilla_dpc_crt_lock_skip_count++ < 16u)
+            fprintf(stderr,
+                    "[CRT-LOCK-DPC] bypass index=%u esp=%08X ret=%08X\n",
+                    eax, esp, MEM32(esp));
+        esp += 4; return;
+    }
     PUSH32(esp, esi);
     esi = eax * 8 + 0x2BFDC8;
     _fa = (uint32_t)(MEM32(esi)) & 0xFFFFFFFFu; _fb = (uint32_t)(0) & 0xFFFFFFFFu;
@@ -120187,6 +120507,27 @@ loc_00111BC1: ;
     POP32(esp, ecx);
 
 loc_00111BC2: ;
+    /* Recompute the slot from the call argument.  The lazy lock constructor's
+     * lifted nested path does not reliably preserve the global guest ESI even
+     * though the original x86 callee did; using that clobbered value here was
+     * the immediate source of the transition access violation. */
+    esi = godzilla_crt_lock_index * 8u + 0x2BFDC8u;
+    /* The overlapped DPC can also leave a torn sentinel in an otherwise valid
+     * lock-table slot.  It is not an Xbox virtual address and must not be
+     * passed to the lifted critical-section import.  The next ordinary CRT
+     * initialization can repopulate the slot; this call behaves as the
+     * uncontended lock it interrupted. */
+    if (MEM32(esi) >= 0xF0000000u) {
+        static unsigned godzilla_invalid_crt_handle_count;
+        if (godzilla_invalid_crt_handle_count++ < 16u) {
+            fprintf(stderr,
+                    "[CRT-LOCK-GUARD] invalid-handle=%08X slot=%08X esp=%08X\n",
+                    MEM32(esi), esi, esp);
+            fflush(stderr);
+        }
+        POP32(esp, esi);
+        esp += 4; return;
+    }
     { uint32_t _icall_esp = g_esp;
     PUSH32(esp, MEM32(esi));
     { uint32_t _icall_target = MEM32(0x1E1234); PUSH32(esp, 0x00111BCAu); RECOMP_ICALL_SAFE(_icall_target, _icall_esp); } /* indirect call */
@@ -130686,6 +131027,21 @@ void sub_0011541E(void)
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
 loc_0011541E: ;
+    /* Synthetic interrupt callbacks do not have the XDK CRT per-thread locale
+     * block that this helper expects.  sub_00116143 consequently returns a
+     * sentinel where retail would return a reference-counted locale object.
+     * DPC code only needs the already-created process default; borrowing that
+     * immutable pointer matches its effective locale without touching a bogus
+     * reference count during the frontend handoff. */
+    if (esp >= 0x00700000u && esp < 0x00800000u) {
+        static unsigned godzilla_dpc_locale_borrow_count;
+        eax = MEM32(0x4BF90Cu);
+        if (godzilla_dpc_locale_borrow_count++ < 16u)
+            fprintf(stderr,
+                    "[CRT-LOCALE-DPC] borrow default=%08X esp=%08X\n",
+                    eax, esp);
+        esp += 4; return;
+    }
     PUSH32(esp, 0x10);
     PUSH32(esp, 0x206A70);
     g_seh_ebp = ebp; /* publish frame to SEH helper */
@@ -130706,6 +131062,23 @@ loc_0011543B: ;
     MEM32(ebp + -28) = edi;
     esi = MEM32(edi + 0x60);
     MEM32(ebp + -32) = esi;
+    /* Some synchronous frontend constructors run this CRT helper on the
+     * interrupted main-thread frame.  Its lazily-created locale slot can
+     * still contain the same CRT sentinel seen on the DPC path.  Never treat
+     * that sentinel as a reference-counted object; attach the process default
+     * locale that the retail CRT would have materialized here. */
+    if (!((esi >= 0x00010000u && esi < 0x04000000u) ||
+          (esi >= 0x80010000u && esi < 0x84000000u))) {
+        static unsigned godzilla_invalid_locale_borrow_count;
+        esi = MEM32(0x4BF90Cu);
+        MEM32(edi + 0x60) = esi;
+        MEM32(ebp + -32) = esi;
+        if (godzilla_invalid_locale_borrow_count++ < 16u)
+            fprintf(stderr,
+                    "[CRT-LOCALE-FALLBACK] borrow default=%08X slot=%08X esp=%08X\n",
+                    esi, edi, esp);
+        goto loc_00115470;
+    }
     _fa = (uint32_t)(esi) & 0xFFFFFFFFu; _fb = (uint32_t)(MEM32(0x4BF90C)) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp esi, MEM32(0x4BF90C) (32-bit) */
     if (CMP_EQ(_fa, _fb)) goto loc_00115470; /* je: equal / zero */

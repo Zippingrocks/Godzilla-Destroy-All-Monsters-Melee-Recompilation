@@ -11407,10 +11407,16 @@ loc_00066D4E: ;
     edx = esp + 0xC;
     MEM8(esp + ebx + 0x14) = 0;
     eax = MEM32(ebp + 8);
-    fprintf(stderr,
-            "[FILE-LOOKUP] prepared index=%08X count=%08X array=%08X key='%s'\n",
-            ebp, eax, ebp + 0x30u, (char *)XBOX_PTR(esp + 0x14u));
-    fflush(stderr);
+    {
+        static RECOMP_TLS uint32_t lookup_prepared_trace_count;
+        if (++lookup_prepared_trace_count <= 32u) {
+            fprintf(stderr,
+                    "[FILE-LOOKUP] prepared index=%08X count=%08X array=%08X key='%s'\n",
+                    ebp, eax, ebp + 0x30u,
+                    (char *)XBOX_PTR(esp + 0x14u));
+            fflush(stderr);
+        }
+    }
     ecx = esp + 0x14;
     PUSH32(esp, edx);
     MEM32(esp + 0x14) = ecx;
@@ -13815,6 +13821,18 @@ void sub_00067EA0(void)
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
 loc_00067EA0: ;
+    if (MEM8(trace_src) == '.') {
+        static RECOMP_TLS uint32_t dot_probe_count;
+        uint32_t _dot_id = ++dot_probe_count;
+        if (_dot_id <= 8u || (_dot_id & (_dot_id - 1u)) == 0u) {
+            fprintf(stderr,
+                    "[PATH-DOT] n=%u caller=%08X manager=%08X head=%08X "
+                    "src=%08X dst=%08X src='%s'\n",
+                    _dot_id, trace_ret, ecx, ecx ? MEM32(ecx + 4u) : 0u,
+                    trace_src, trace_dst, (const char *)XBOX_PTR(trace_src));
+            fflush(stderr);
+        }
+    }
     PUSH32(esp, ebx);
     PUSH32(esp, esi);
     esi = MEM32(ecx + 4);
@@ -13884,10 +13902,16 @@ void sub_00067EE0(void)
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
+    uint32_t _path_walk_count = 0;
+    uint32_t _path_call_id = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
 loc_00067EE0: ;
+    {
+        static RECOMP_TLS uint32_t path_call_count;
+        _path_call_id = ++path_call_count;
+    }
     eax = MEM32(esp + 0xC);
     esp = esp - 0x100;
     PUSH32(esp, ebx);
@@ -13933,6 +13957,29 @@ loc_00067F20: ;
     /* nop */
 
 loc_00067F30: ;
+    _path_walk_count++;
+    if (_path_call_id <= 16u || (_path_call_id & (_path_call_id - 1u)) == 0u) {
+        uint32_t _node_len = ebp ? MEM32(ebp + 8u) : 0u;
+        fprintf(stderr,
+                "[PATH-WALK] call=%u n=%u this=%08X node=%08X next=%08X len=%u "
+                "dst=%08X cap=%u src=%08X ret=%08X prefix='",
+                _path_call_id, _path_walk_count, esi, ebp,
+                ebp ? MEM32(ebp) : 0u,
+                _node_len, MEM32(esp + 0x114u), MEM32(esp + 0x118u),
+                esp + 0x10u, MEM32(esp + 0x110u));
+        for (uint32_t _i = 0; ebp && _i < _node_len && _i < 80u; ++_i) {
+            uint8_t _ch = MEM8(ebp + 0xCu + _i);
+            fputc((_ch >= 0x20u && _ch < 0x7Fu) ? (int)_ch : '.', stderr);
+        }
+        fputs("' tail='", stderr);
+        for (uint32_t _i = 0; _i < 80u; ++_i) {
+            uint8_t _ch = MEM8(esp + 0x10u + _i);
+            if (!_ch) break;
+            fputc((_ch >= 0x20u && _ch < 0x7Fu) ? (int)_ch : '.', stderr);
+        }
+        fputs("'\n", stderr);
+        fflush(stderr);
+    }
     ecx = MEM32(ebp + 8);
     eax = MEM32(esp + 0x118);
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(ecx) & 0xFFFFFFFFu;
@@ -15227,16 +15274,17 @@ loc_00068980: ;
     {
         static RECOMP_TLS uint32_t path_trace_count;
         _path_trace_id = ++path_trace_count;
-        if (_path_trace_id <= 12u) {
-            uint32_t _trace_source = MEM32(esp + 4u);
+        uint32_t _trace_source = MEM32(esp + 4u);
+        if (_path_trace_id <= 16u || MEM8(_trace_source) == '.' ||
+            (_path_trace_id & (_path_trace_id - 1u)) == 0u) {
             uint32_t _trace_output = MEM32(esp + 8u);
             uint32_t _trace_vtable = ecx ? MEM32(ecx) : 0u;
             fprintf(stderr,
                     "[PATH-PROVIDER] #%u enter this=%08X vtable=%08X "
-                    "target=%08X source=%08X output=%08X esp=%08X src='",
+                    "target=%08X source=%08X output=%08X esp=%08X ret=%08X src='",
                     _path_trace_id, ecx, _trace_vtable,
                     _trace_vtable ? MEM32(_trace_vtable + 0x18u) : 0u,
-                    _trace_source, _trace_output, esp);
+                    _trace_source, _trace_output, esp, MEM32(esp));
             for (uint32_t _i = 0; _i < 96u; ++_i) {
                 uint8_t _ch = MEM8(_trace_source + _i);
                 if (_ch == 0u) break;
@@ -15258,7 +15306,8 @@ loc_00068980: ;
     }
 
 loc_0006899A: ;
-    if (_path_trace_id <= 12u) {
+    if (_path_trace_id <= 16u || MEM8(esp + 0x24u) == '.' ||
+        (_path_trace_id & (_path_trace_id - 1u)) == 0u) {
         uint32_t _trace_temp = esp + 0x24u;
         fprintf(stderr,
                 "[PATH-PROVIDER] #%u build-result=%08X esp=%08X temp=%08X path='",
@@ -15404,6 +15453,15 @@ void sub_00068AB0(void)
 {
 
 loc_00068AB0: ;
+    if (MEM8(MEM32(esp + 4u)) == '.') {
+        static RECOMP_TLS uint32_t dot_wrapper_count;
+        uint32_t _dot_id = ++dot_wrapper_count;
+        if (_dot_id <= 8u || (_dot_id & (_dot_id - 1u)) == 0u)
+            fprintf(stderr,
+                    "[PATH-DOT-WRAPPER] n=%u caller=%08X src=%08X dst=%08X src='%s'\n",
+                    _dot_id, MEM32(esp), MEM32(esp + 4u), MEM32(esp + 8u),
+                    (const char *)XBOX_PTR(MEM32(esp + 4u)));
+    }
     eax = MEM32(esp + 8);
     edx = MEM32(esp + 4);
     PUSH32(esp, ebx);
@@ -39598,6 +39656,7 @@ void sub_00074C20(void)
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
+    uint32_t _monster_source = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
@@ -39605,6 +39664,7 @@ loc_00074C20: ;
     PUSH32(esp, ebx);
     PUSH32(esp, esi);
     esi = MEM32(esp + 0xC);
+    _monster_source = esi;
     PUSH32(esp, edi);
     edi = ecx;
     MEM32(edi + 4) = esi;
@@ -39639,6 +39699,7 @@ loc_00074C4F: ;
     PUSH32(esp, 0x00074C63u); sub_0011FDF0(); /* call 0x0011FDF0 */
 
 loc_00074C63: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 11FDF0 expected=%08X got=%08X\n", _monster_source, esi);
     esp = esp + 0xC;
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* test eax, eax (32-bit) */
@@ -39653,10 +39714,12 @@ loc_00074C6D: ;
     PUSH32(esp, 0x00074C78u); sub_000509C0(); /* call 0x000509C0 */
 
 loc_00074C78: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 509C0 expected=%08X got=%08X\n", _monster_source, esi);
     ecx = 0x3C64D8;
     PUSH32(esp, 0x00074C82u); sub_00024050(); /* call 0x00024050 */
 
 loc_00074C82: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 24050 expected=%08X got=%08X\n", _monster_source, esi);
     eax = 0; /* xor self */
     SET_LO8(eax, MEM8(esi + 0x270));
     ecx = 0x3C64D8;
@@ -39665,17 +39728,20 @@ loc_00074C82: ;
     PUSH32(esp, 0x00074C96u); sub_000241D0(); /* call 0x000241D0 */
 
 loc_00074C96: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 241D0 expected=%08X got=%08X\n", _monster_source, esi);
     ebx = edi + 0x1C4;
     ecx = ebx;
     MEM32(edi) = eax;
     PUSH32(esp, 0x00074CA5u); sub_0009DC20(); /* call 0x0009DC20 */
 
 loc_00074CA5: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 9DC20 expected=%08X got=%08X\n", _monster_source, esi);
     PUSH32(esp, esi);
     ecx = ebx;
     PUSH32(esp, 0x00074CADu); sub_0009E620(); /* call 0x0009E620 */
 
 loc_00074CAD: ;
+    if (esi != _monster_source) fprintf(stderr, "[ESI-CLOBBER] after 9E620 expected=%08X got=%08X\n", _monster_source, esi);
     ecx = MEM32(edi);
     SET_LO16(edx, MEM16(esi + 0x274));
     MEM16(ecx) = LO16(edx);
@@ -39692,6 +39758,15 @@ loc_00074CC2: ;
     PUSH32(esp, 0x00074CD6u); sub_000250C0(); /* call 0x000250C0 */
 
 loc_00074CD6: ;
+    fprintf(stderr,
+            "[MONSTER-BUNDLES] object=%08X count=%d names=%08X first='",
+            esi, (int32_t)MEM32(esi + 0x280u), esi + 0x377u);
+    for (uint32_t _i = 0; _i < 96u; ++_i) {
+        uint8_t _ch = MEM8(esi + 0x377u + _i);
+        if (!_ch) break;
+        fputc((_ch >= 0x20u && _ch < 0x7Fu) ? (int)_ch : '.', stderr);
+    }
+    fputs("'\n", stderr);
     eax = MEM32(esi + 0x280);
     edi = 0; /* xor self */
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(eax) & 0xFFFFFFFFu;
@@ -39709,6 +39784,16 @@ loc_00074CF0: ;
     PUSH32(esp, 0x00074CFBu); sub_00024320(); /* call 0x00024320 */
 
 loc_00074CFB: ;
+    {
+        static RECOMP_TLS uint32_t monster_loop_count;
+        uint32_t _n = ++monster_loop_count;
+        if (_n <= 8u || (_n & (_n - 1u)) == 0u)
+            fprintf(stderr,
+                    "[MONSTER-BUNDLE-LOOP] n=%u index=%d count=%d object=%08X "
+                    "nameptr=%08X\n",
+                    _n, (int32_t)edi, (int32_t)MEM32(esi + 0x280u),
+                    esi, ebx);
+    }
     eax = MEM32(esi + 0x280);
     edi++;
     ebx = ebx + 0x19C;

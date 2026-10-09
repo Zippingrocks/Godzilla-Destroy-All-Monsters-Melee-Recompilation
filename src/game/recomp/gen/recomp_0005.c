@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdio.h>
 
+extern int godzilla_xapi_hook(uint32_t va);
+
 /**
  * sub_00199124
  * Original: 0x00199124 - 0x00199141 (29 bytes, 9 insns)
@@ -28362,6 +28364,18 @@ loc_001A2E47: ;
     goto loc_001A2EA3;
 
 loc_001A2E4C: ;
+    /* The offline XOnline path may return an HRESULT/sentinel such as
+     * 0x85000000 in EAX.  It is a failure value, not an object pointer.  The
+     * lifted nonzero branch above otherwise dereferences sentinel+0x0E during
+     * the startup-movie/menu handoff. */
+    if (!((esi >= 0x00010000u && esi < 0x04000000u) ||
+          (esi >= 0x80010000u && esi < 0x84000000u))) {
+        fprintf(stderr,
+                "[XONLINE-OFFLINE] rejecting non-object result=%08X at 001A2E41\n",
+                esi);
+        eax = 0xFFFFFFFFu;
+        goto loc_001A2EA3;
+    }
     { uint32_t _icall_esp = g_esp;
     PUSH32(esp, ebx);
     { uint32_t _icall_target = MEM32(0x1E12B4); PUSH32(esp, 0x001A2E53u); RECOMP_ICALL_SAFE(_icall_target, _icall_esp); } /* indirect call */
@@ -35729,6 +35743,12 @@ loc_001A56EF: ;
     ecx = MEM32(esi + 0xAD0);
     PUSH32(esp, edi);
     edi = MEM32(esi + 0xAD4);
+    /* The Xbox APU does not dispatch this service routine until its period
+     * field has been programmed.  The host IRQ bridge can deliver one early
+     * DPC while that field is still zero; defer that tick instead of executing
+     * the retail unsigned divide with an impossible zero hardware period. */
+    if (edi == 0u)
+        goto loc_001A57F4;
     _fa = (uint32_t)(ecx) & 0xFFFFFFFFu; _fb = (uint32_t)(edi) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp ecx, edi (32-bit) */
     if (CMP_B(_fa, _fb)) goto loc_001A57F4; /* jb: below (unsigned <) */
@@ -83658,6 +83678,8 @@ void sub_001DA8DC(void)
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
+    if (godzilla_xapi_hook(0x001DA8DCu)) return;
+
 loc_001DA8DC: ;
     PUSH32(esp, ebp);
     ebp = esp;
@@ -83739,6 +83761,8 @@ loc_001DA92E: ;
 void sub_001DA932(void)
 {
 
+    if (godzilla_xapi_hook(0x001DA932u)) return;
+
 loc_001DA932: ;
     ecx = MEM32(esp + 4);
     PUSH32(esp, 0x001DA93Bu); sub_001DB586(); /* call 0x001DB586 */
@@ -83761,6 +83785,8 @@ void sub_001DA93E(void)
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
+
+    if (godzilla_xapi_hook(0x001DA93Eu)) return;
 
 loc_001DA93E: ;
     { uint32_t _icall_esp = g_esp;
@@ -84001,6 +84027,8 @@ void sub_001DAB1C(void)
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
+    if (godzilla_xapi_hook(0x001DAB1Cu)) return;
+
 loc_001DAB1C: ;
     { uint32_t _icall_esp = g_esp;
     PUSH32(esp, ebx);
@@ -84082,6 +84110,8 @@ void sub_001DAB88(void)
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
+
+    if (godzilla_xapi_hook(0x001DAB88u)) return;
 
 loc_001DAB88: ;
     ecx = MEM32(esp + 4);
@@ -84174,6 +84204,8 @@ loc_001DABDD: ;
 void sub_001DABE2(void)
 {
 
+    if (godzilla_xapi_hook(0x001DABE2u)) return;
+
 loc_001DABE2: ;
     { uint32_t _icall_esp = g_esp;
     PUSH32(esp, esi);
@@ -84211,6 +84243,8 @@ void sub_001DAC04(void)
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
     int _cf = 0; /* carry flag */
+
+    if (godzilla_xapi_hook(0x001DAC04u)) return;
 
 loc_001DAC04: ;
     PUSH32(esp, ebp);

@@ -12,6 +12,8 @@ extern RECOMP_TLS uint32_t g_eax, g_ecx, g_edx, g_esp;
 extern RECOMP_TLS uint32_t g_ebx, g_esi, g_edi, g_seh_ebp;
 extern ptrdiff_t g_xbox_mem_offset;
 extern void xbox_irq_enable_vblank(uint32_t vector);
+extern int recomp_dispatch_init(void);
+extern void godzilla_host_xmv_begin_sequence(void);
 
 #define GODZILLA_ENTRY_POINT 0x0002A6D9u
 #define GODZILLA_XBE_PATH "game_files\\default.xbe"
@@ -26,6 +28,7 @@ extern void xbox_irq_enable_vblank(uint32_t vector);
 static HWND g_host_window;
 static IDirect3D8 *g_host_d3d8;
 static IDirect3DDevice8 *g_host_d3d_device;
+static HANDLE g_host_window_ready;
 
 static LRESULT CALLBACK godzilla_window_proc(HWND hwnd, UINT message,
                                               WPARAM wparam, LPARAM lparam)
@@ -33,23 +36,28 @@ static LRESULT CALLBACK godzilla_window_proc(HWND hwnd, UINT message,
     (void)wparam;
     (void)lparam;
     if (message == WM_CLOSE) {
+        fprintf(stderr, "[HOST-WINDOW] WM_CLOSE hwnd=%p\n", (void *)hwnd);
+        fflush(stderr);
         DestroyWindow(hwnd);
         return 0;
     }
     if (message == WM_DESTROY) {
+        fprintf(stderr, "[HOST-WINDOW] WM_DESTROY hwnd=%p -> WM_QUIT\n",
+                (void *)hwnd);
+        fflush(stderr);
         PostQuitMessage(0);
         return 0;
     }
     return DefWindowProcA(hwnd, message, wparam, lparam);
 }
 
-static BOOL init_host_graphics(void)
+static DWORD WINAPI godzilla_window_thread(void *unused)
 {
     WNDCLASSEXA window_class = {0};
-    D3DPRESENT_PARAMETERS present = {0};
     RECT rect = {0, 0, 640, 480};
     HINSTANCE instance = GetModuleHandleA(NULL);
-    HRESULT hr;
+    MSG msg;
+    (void)unused;
 
     window_class.cbSize = sizeof(window_class);
     window_class.style = CS_HREDRAW | CS_VREDRAW;
@@ -62,7 +70,8 @@ static BOOL init_host_graphics(void)
         GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
         fprintf(stderr, "Unable to register graphics window (error %lu).\n",
                 GetLastError());
-        return FALSE;
+        SetEvent(g_host_window_ready);
+        return 1;
     }
 
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
@@ -74,8 +83,51 @@ static BOOL init_host_graphics(void)
     if (!g_host_window) {
         fprintf(stderr, "Unable to create graphics window (error %lu).\n",
                 GetLastError());
+        SetEvent(g_host_window_ready);
+        return 2;
+    }
+    /* Do not expose an uninitialized black swapchain.  The D3D scanout path
+     * reveals the window as soon as the first decoded or rendered frame has
+     * been published. */
+    ShowWindow(g_host_window, SW_HIDE);
+    SetEvent(g_host_window_ready);
+
+    while (GetMessageA(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+    fprintf(stderr, "[HOST-EXIT] window thread ended code=%llu\n",
+            (unsigned long long)msg.wParam);
+    fflush(stderr);
+    ExitProcess((UINT)msg.wParam);
+    return (DWORD)msg.wParam;
+}
+
+static BOOL init_host_graphics(void)
+{
+    D3DPRESENT_PARAMETERS present = {0};
+    HANDLE window_thread;
+    HRESULT hr;
+
+    g_host_window_ready = CreateEventA(NULL, TRUE, FALSE, NULL);
+    if (!g_host_window_ready) return FALSE;
+    window_thread = CreateThread(NULL, 0, godzilla_window_thread, NULL, 0, NULL);
+    if (!window_thread) {
+        CloseHandle(g_host_window_ready);
+        g_host_window_ready = NULL;
         return FALSE;
     }
+    if (WaitForSingleObject(g_host_window_ready, 10000) != WAIT_OBJECT_0) {
+        fprintf(stderr, "Timed out creating host graphics window.\n");
+        CloseHandle(window_thread);
+        CloseHandle(g_host_window_ready);
+        g_host_window_ready = NULL;
+        return FALSE;
+    }
+    CloseHandle(window_thread);
+    CloseHandle(g_host_window_ready);
+    g_host_window_ready = NULL;
+    if (!g_host_window) return FALSE;
 
     g_host_d3d8 = xbox_Direct3DCreate8(0);
     if (!g_host_d3d8) return FALSE;
@@ -94,8 +146,6 @@ static BOOL init_host_graphics(void)
         fprintf(stderr, "Unable to create host D3D device (0x%08lX).\n", hr);
         return FALSE;
     }
-    ShowWindow(g_host_window, SW_SHOW);
-    UpdateWindow(g_host_window);
     return TRUE;
 }
 
@@ -235,10 +285,22 @@ int main(void)
         xbox_path_init(GODZILLA_GAME_DIR, "SaveData\\GodzillaDAMM");
     }
     xbox_kernel_bridge_init();
+    /* Build the flat indirect-call table before creating the host window.
+     * Besides speeding vtable-heavy startup, this records the window-owning
+     * thread used by the dispatch heartbeat to keep Windows messages flowing
+     * throughout synchronous asset loading. */
+    if (!recomp_dispatch_init())
+        fprintf(stderr, "Flat recomp dispatch unavailable; using search fallback.\n");
     if (!init_host_graphics()) {
         fprintf(stderr, "Host graphics initialization failed.\n");
         goto cleanup;
     }
+    /* Begin decoding the real retail startup reel as soon as the display is
+     * available.  Guest shell initialization continues underneath it; when
+     * the recovered movie event arrives it joins this already-running stream
+     * instead of making the player sit through a black startup window. */
+    if (!getenv("GODZILLA_SKIP_MOVIES"))
+        godzilla_host_xmv_begin_sequence();
     /* This XDK build connects the NV2A interrupt at vector 3.  The retail D3D
      * ISR increments the vblank count used both for presentation pacing and
      * the XMV playback clock. */
@@ -287,6 +349,9 @@ int main(void)
     xbox_kernel_shutdown();
     xbox_MemoryLayoutShutdown();
 cleanup:
+    fprintf(stderr, "[HOST-EXIT] main returning result=%d eax=%08X\n",
+            result, g_eax);
+    fflush(stderr);
     free(xbe_data);
     return result;
 }

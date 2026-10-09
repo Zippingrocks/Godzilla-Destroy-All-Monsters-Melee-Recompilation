@@ -9,6 +9,8 @@
 #include <stdio.h>
 
 extern uint32_t g_mainmenu_bundle_trace;
+extern volatile uint32_t godzilla_profile_confirm_pending;
+extern volatile uint32_t godzilla_profile_accept_transition;
 
 static uint32_t godzilla_scene_attach_trace;
 
@@ -15743,6 +15745,7 @@ loc_0001BB9E: ;
  */
 void sub_0001BBC0(void)
 {
+    static unsigned godzilla_profile_commit_trace;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
@@ -15756,6 +15759,13 @@ void sub_0001BBC0(void)
     #define fp_st1() fp_st(1)
 
 loc_0001BBC0: ;
+    if (godzilla_profile_commit_trace++ < 24u) {
+        fprintf(stderr,
+                "[PROFILE-COMMIT-TICK] this=%08X phase=%08X callback=%08X main-flag=%02X\n",
+                ecx, MEM32(ecx + 0x1F4), MEM32(ecx + 0x34),
+                MEM8(0x2C2AF0));
+        fflush(stderr);
+    }
     PUSH32(esp, ecx);
     PUSH32(esp, edi);
     edi = ecx;
@@ -26020,6 +26030,7 @@ loc_00021A93: ;
  */
 void sub_00021AA0(void)
 {
+    static unsigned godzilla_menu_input_trace;
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
@@ -26034,6 +26045,68 @@ void sub_00021AA0(void)
     #define fp_st1() fp_st(1)
 
 loc_00021AA0: ;
+    if (godzilla_menu_input_trace++ < 32u) {
+        fprintf(stderr,
+                "[MENU-INPUT-TICK] owner=%08X arg=%08X profile-node=%08X commit-node=%08X flags=%02X/%02X "
+                "pads=%02X,%02X,%02X,%02X count=%u active=%02X pending=%08X seen=%08X\n",
+                ecx, MEM32(esp + 4), MEM32(ecx + 0x2C), MEM32(ecx + 0x34),
+                MEM8(ecx + 0x4B8), MEM8(0x2C2AF0),
+                MEM8(0x4AD60C), MEM8(0x4AD60D), MEM8(0x4AD60E), MEM8(0x4AD60F),
+                MEM32(0x4AD610), MEM8(0x4AD614), MEM32(0x4AD618), MEM32(0x2264BC));
+        fflush(stderr);
+    }
+    /* The profile input context queues its accept callback on this active
+     * menu-input listener.  An impatient Start sequence can retire the main
+     * presentation object (0x12800) before its old compatibility countdown
+     * runs, leaving the genuine command-0x15 transition permanently queued.
+     * Consume the same delayed callback here, at the listener that remains
+     * registered, and invoke the retail DDE60 boundary unchanged. */
+    if (godzilla_profile_confirm_pending > 1u) {
+        --godzilla_profile_confirm_pending;
+    } else if (godzilla_profile_confirm_pending == 1u) {
+        const uint32_t bridge_sp = esp;
+        const uint32_t bridge_eax = eax;
+        const uint32_t bridge_ecx = ecx;
+        const uint32_t bridge_edx = edx;
+        godzilla_profile_confirm_pending = 0u;
+        MEM32(0x2C2ACC) = 0u;
+        PUSH32(esp, 0);
+        PUSH32(esp, 0);
+        PUSH32(esp, 0);
+        PUSH32(esp, 0x15);
+        ecx = 0x4AD508;
+        PUSH32(esp, 0x00021AA0u);
+        sub_000DDE60();
+        /* Rapid startup input can retire sub_00012800 before it observes the
+         * completion byte written by DDE60.  Finish the exact retail accept
+         * tail here while this listener is still registered: tear down the
+         * obsolete presentation/input context, then ask the frontend state
+         * machine to select its post-profile state. */
+        if (MEM8(0x2C2AF0) != 0u) {
+            MEM8(0x2C2AF0) = 0u;
+            ecx = 0x2C2A58;
+            PUSH32(esp, 0x000128A8u);
+            sub_000126A0();
+            ecx = 0x2C2A58;
+            PUSH32(esp, 0x000128B2u);
+            sub_00012600();
+            MEM32(0x2C2ACC) = 0u;
+            godzilla_profile_accept_transition = 1u;
+            PUSH32(esp, 0xFFFFFFFFu);
+            ecx = 0x4AD508;
+            PUSH32(esp, 0x000128BEu);
+            sub_000DED00();
+            godzilla_profile_accept_transition = 0u;
+        }
+        esp = bridge_sp;
+        eax = bridge_eax;
+        ecx = bridge_ecx;
+        edx = bridge_edx;
+        fprintf(stderr,
+                "[PROFILE-CONFIRM-ACTIVE] retail command=15 flag=%02X tag=%08X value=%08X\n",
+                MEM8(0x2C2AF0), MEM32(0x4A9630), MEM32(0x4A9634));
+        fflush(stderr);
+    }
     PUSH32(esp, ebp);
     ebp = esp;
     g_ebp = ebp; /* publish frame for frameless callees */
@@ -28925,12 +28998,18 @@ loc_0002302A: ;
  */
 void sub_00023030(void)
 {
+    static unsigned godzilla_input_dispatch_trace;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
 loc_00023030: ;
+    if (godzilla_input_dispatch_trace++ < 32u) {
+        fprintf(stderr, "[INPUT-DISPATCH] owner=%08X players=%u first=%08X\n",
+                ecx, MEM32(ecx), MEM32(ecx + 4));
+        fflush(stderr);
+    }
     PUSH32(esp, ebx);
     ebx = ecx;
     eax = MEM32(ebx);
@@ -31061,9 +31140,11 @@ void sub_00024050(void)
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
+    uint32_t _entry_esp = 0;
     (void)_fa; (void)_fb; (void)_fas; (void)_fbs;
 
 loc_00024050: ;
+    _entry_esp = esp;
     PUSH32(esp, esi);
     PUSH32(esp, edi);
     PUSH32(esp, 0x8C);
@@ -31088,6 +31169,7 @@ loc_00024070: ;
     edi = 0; /* xor self */
 
 loc_00024072: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] at 24072 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     ecx = MEM32(esi + 0x34);
     _fa = (uint32_t)(ecx) & 0xFFFFFFFFu; _fb = (uint32_t)(ecx) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* test ecx, ecx (32-bit) */
@@ -31101,6 +31183,7 @@ loc_0002407E: ;
     PUSH32(esp, 0x00024083u); sub_0002E400(); /* call 0x0002E400 */
 
 loc_00024083: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] at 24083 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     MEM32(esi + 0x34) = edi;
     eax = MEM32(esi);
     eax = eax + 0x1D45000;
@@ -31110,6 +31193,7 @@ loc_00024083: ;
     PUSH32(esp, 0x0002409Au); sub_0003E920(); /* call 0x0003E920 */
 
 loc_0002409A: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 3E920 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     edx = MEM32(0x2C2A50);
     eax = MEM32(edx + 0xC);
     ecx = MEM32(esi + 0x34);
@@ -31118,6 +31202,7 @@ loc_0002409A: ;
     PUSH32(esp, 0x000240B1u); sub_000400D0(); /* call 0x000400D0 */
 
 loc_000240B1: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 400D0 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     _fa = (uint32_t)(LO8(eax)) & 0xFFu; _fb = (uint32_t)(LO8(eax)) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb); /* test LO8(eax), LO8(eax) (8-bit) */
     if (TEST_NZ(_fa, _fb)) goto loc_000240C9; /* jne: not equal / not zero */
@@ -31129,14 +31214,17 @@ loc_000240B5: ;
     PUSH32(esp, 0x000240C9u); sub_00068FE0(); /* call 0x00068FE0 */
 
 loc_000240C9: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] at 240C9 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     ecx = MEM32(esi + 0x34);
     PUSH32(esp, 0x000240D1u); sub_0003F110(); /* call 0x0003F110 */
 
 loc_000240D1: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 3F110 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     ecx = 0x297F0;
     PUSH32(esp, 0x000240DBu); sub_00050A50(); /* call 0x00050A50 */
 
 loc_000240DB: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 50A50 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     ecx = MEM32(esi + 0x34);
     edi = 0; /* xor self */
     _fa = (uint32_t)(MEM16(ecx + 0x1C)) & 0xFFFFu; _fb = (uint32_t)(LO16(edi)) & 0xFFFFu;
@@ -31148,6 +31236,7 @@ loc_000240E6: ;
     PUSH32(esp, 0x000240ECu); sub_0003E880(); /* call 0x0003E880 */
 
 loc_000240EC: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 3E880 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     _fa = (uint32_t)(MEM8(eax + 2)) & 0xFFu; _fb = (uint32_t)(0x14) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb); /* cmp MEM8(eax + 2), 0x14 (8-bit) */
     if (CMP_NE(_fa, _fb)) goto loc_00024100; /* jne: not equal / not zero */
@@ -31159,6 +31248,7 @@ loc_000240F2: ;
     PUSH32(esp, 0x00024100u); sub_000360F0(); /* call 0x000360F0 */
 
 loc_00024100: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] after 360F0 expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     ecx = MEM32(esi + 0x34);
     edx = ZX16(MEM16(ecx + 0x1C));
     edi++;
@@ -31167,6 +31257,7 @@ loc_00024100: ;
     if (CMP_L(_fas, _fbs)) goto loc_000240E6; /* jl: less (signed <) */
 
 loc_0002410C: ;
+    if (esp != _entry_esp - 8u) fprintf(stderr, "[24050-STACK] epilogue expected=%08X got=%08X\n", _entry_esp - 8u, esp);
     POP32(esp, edi);
     POP32(esp, esi);
     esp += 4; return; /* ret */
@@ -31349,6 +31440,15 @@ loc_000241D0: ;
 loc_000241E4: ;
     PUSH32(esp, edi);
     edi = MEM32(esp + 0x430);
+    fprintf(stderr,
+            "[FRONTEND-BUNDLE] owner=%08X base=%08X variant=%u cached=%08X text='",
+            esi, edi, MEM32(esp + 0x434), MEM32(esi + 0x2C));
+    for (uint32_t _i = 0; _i < 96u; ++_i) {
+        uint8_t _ch = MEM8(edi + _i);
+        if (!_ch) break;
+        fputc((_ch >= 0x20u && _ch < 0x7Fu) ? (int)_ch : '.', stderr);
+    }
+    fputs("'\n", stderr);
     PUSH32(esp, 0x100);
     PUSH32(esp, 0x1E2C7C);
     edx = edi;
@@ -61776,6 +61876,7 @@ loc_00031B93: ;
 void sub_00031BE0(void)
 {
     uint32_t ebp;
+    int _token_equal = 0;
     ebp = g_ebp;  /* frameless: caller's frame */
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
@@ -61834,6 +61935,7 @@ loc_00031C27: ;
 loc_00031C2E: ;
     _fa = (uint32_t)(LO8(ecx)) & 0xFFu; _fb = (uint32_t)(LO8(ebx)) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb); /* cmp LO8(ecx), LO8(ebx) (8-bit) */
+    _token_equal = CMP_EQ(_fa, _fb);
     goto loc_00031C3C;
 
 loc_00031C32: ;
@@ -61845,9 +61947,10 @@ loc_00031C36: ;
     SET_LO8(ebx, MEM8(ebp + 1));
     _fa = (uint32_t)(LO8(ebx)) & 0xFFu; _fb = (uint32_t)(MEM8(edx + 1)) & 0xFFu;
     _fas = (int32_t)(int8_t)(_fa); _fbs = (int32_t)(int8_t)(_fb); /* cmp LO8(ebx), MEM8(edx + 1) (8-bit) */
+    _token_equal = CMP_EQ(_fa, _fb);
 
 loc_00031C3C: ;
-    if (_flags /* je: equal / zero */) goto loc_00031C48;
+    if (_token_equal) goto loc_00031C48;
 
 loc_00031C3E: ;
     esi++;
@@ -70379,8 +70482,12 @@ loc_000360D6: ;
  */
 void sub_000360F0(void)
 {
+    uint32_t _entry_esp = esp;
+    uint32_t _saved_ebx = ebx;
+    uint32_t _saved_esi = esi, _saved_edi = edi;
     uint32_t ebp;
     ebp = g_ebp;  /* frameless: caller's frame */
+    uint32_t _saved_ebp = ebp;
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
@@ -70451,14 +70558,16 @@ loc_00036154: ;
 
 loc_0003615A: ;
     ecx = MEM32(eax + 4);
-    POP32(esp, edi);
-    POP32(esp, esi);
     ecx++;
-    POP32(esp, ebp);
     MEM32(eax + 4) = ecx;
-    POP32(esp, ebx);
-    esp = esp + 0x21C;
-    esp += 8; return; /* ret 4 */
+    /* Restore from the real function-entry state. A nested registry cache
+     * hit can leave its temporary translated stack cursor active here. */
+    edi = _saved_edi;
+    esi = _saved_esi;
+    ebp = _saved_ebp;
+    ebx = _saved_ebx;
+    esp = _entry_esp + 8u;
+    return; /* ret 4 */
 
 loc_0003616E: ;
     ecx = MEM32(esp + 0x230);
@@ -70510,13 +70619,11 @@ loc_000361BF: ;
     }
 
 loc_000361C9: ;
-    POP32(esp, edi);
-    POP32(esp, esi);
-    POP32(esp, ebp);
     eax = 0; /* xor self */
-    POP32(esp, ebx);
-    esp = esp + 0x21C;
-    esp += 8; return; /* ret 4 */
+    edi = _saved_edi; esi = _saved_esi;
+    ebp = _saved_ebp; ebx = _saved_ebx;
+    esp = _entry_esp + 8u;
+    return; /* ret 4 */
 
 loc_000361D8: ;
     edx = MEM32(esp + 0x10);
@@ -70542,13 +70649,11 @@ loc_000361FB: ;
     PUSH32(esp, 0x00036204u); sub_000144E0(); /* call 0x000144E0 */
 
 loc_00036204: ;
-    POP32(esp, edi);
-    POP32(esp, esi);
-    POP32(esp, ebp);
     eax = 0; /* xor self */
-    POP32(esp, ebx);
-    esp = esp + 0x21C;
-    esp += 8; return; /* ret 4 */
+    edi = _saved_edi; esi = _saved_esi;
+    ebp = _saved_ebp; ebx = _saved_ebx;
+    esp = _entry_esp + 8u;
+    return; /* ret 4 */
 
 loc_00036213: ;
     ecx = esp + 0x2C;
@@ -70574,13 +70679,11 @@ loc_0003621C: ;
     PUSH32(esp, 0x00036254u); sub_000144E0(); /* call 0x000144E0 */
 
 loc_00036254: ;
-    POP32(esp, edi);
     eax = esi;
-    POP32(esp, esi);
-    POP32(esp, ebp);
-    POP32(esp, ebx);
-    esp = esp + 0x21C;
-    esp += 8; return; /* ret 4 */
+    edi = _saved_edi; esi = _saved_esi;
+    ebp = _saved_ebp; ebx = _saved_ebx;
+    esp = _entry_esp + 8u;
+    return; /* ret 4 */
 
 }
 
@@ -72142,6 +72245,7 @@ loc_00036CA2: ;
  */
 void sub_00036CB0(void)
 {
+    extern void godzilla_schedule_frontend_completion(uint32_t owner);
     int _flags = 0; /* fallback flag var */
     uint32_t _fa = 0, _fb = 0;
     int32_t _fas = 0, _fbs = 0;
@@ -72184,11 +72288,30 @@ loc_00036CDC: ;
 
 loc_00036CEC: ;
     MEM8(esi + 0xFC) = 1;
+    godzilla_schedule_frontend_completion(esi);
 
 loc_00036CF3: ;
     POP32(esp, esi);
     esp += 4; return; /* ret */
 
+}
+
+static uint32_t godzilla_frontend_completion_owner;
+static uint32_t godzilla_frontend_completion_age;
+
+void godzilla_schedule_frontend_completion(uint32_t owner)
+{
+    godzilla_frontend_completion_owner = owner;
+    godzilla_frontend_completion_age = 0;
+}
+
+void godzilla_pump_frontend_completion(void)
+{
+    uint32_t owner = godzilla_frontend_completion_owner;
+    if (!owner || ++godzilla_frontend_completion_age < 120u)
+        return;
+    godzilla_frontend_completion_owner = 0;
+    MEM8(owner + 0xFC) = 0;
 }
 
 /**
@@ -75968,6 +76091,22 @@ loc_0003901E: ;
     if (TEST_Z(_fa, _fb)) goto loc_000390C4; /* je: equal / zero */
 
 loc_00039046: ;
+    {
+        static RECOMP_TLS uint32_t _text_trace_count;
+        if (++_text_trace_count <= 4u) {
+            uint32_t _len = 0;
+            while (_len < 8192u && MEM8(edi + _len)) ++_len;
+            fprintf(stderr,
+                    "[MENU-TEXT] n=%u object=%08X text=%08X len=%s%u bytes='",
+                    _text_trace_count, esi, edi,
+                    _len == 8192u ? ">=" : "", _len);
+            for (uint32_t _i = 0; _i < _len && _i < 128u; ++_i) {
+                uint8_t _ch = MEM8(edi + _i);
+                fputc((_ch >= 0x20u && _ch < 0x7Fu) ? (int)_ch : '.', stderr);
+            }
+            fputs("'\n", stderr);
+        }
+    }
     fp_push((double)SMEM32(esp + 0x10)); /* fild */
     edx = MEM32(esi + 0xB68);
     PUSH32(esp, edx);
@@ -84369,6 +84508,20 @@ loc_0003EAD0: ;
         uint32_t count = MEM32(edi);
         uint32_t low = 0;
         uint32_t high = count;
+        /* PWK descriptors commonly point straight back into this string
+         * table.  Duplicate spellings are legal, and the archive's record
+         * table keys those internal references by the exact string pointer.
+         * Preserve that identity before falling back to a textual lookup;
+         * lower_bound alone aliases duplicates to the first spelling and
+         * makes otherwise valid render records unreachable. */
+        if (g_mainmenu_bundle_trace && edi == 0x017FD000u) {
+            for (uint32_t i = 0; i < count; ++i) {
+                if (edi + MEM32(edi + i * 4u + 4u) == query) {
+                    eax = i;
+                    esp += 8; return; /* ret 4 */
+                }
+            }
+        }
         while (low < high) {
             uint32_t mid = low + ((high - low) >> 1);
             uint32_t name = edi + MEM32(edi + mid * 4u + 4u);
@@ -93539,6 +93692,17 @@ loc_000447CD: ;
     MEM32(esp + 0x3C) = 0;
 
 loc_000447D5: ;
+    {
+        static uint32_t scene_resource_trace_count;
+        if (scene_resource_trace_count < 32u) {
+            fprintf(stderr,
+                    "[SCENE-RESOURCE-DESC] n=%u desc=%08X type=%04X count=%04X index=%04X data=%08X/%08X/%08X\n",
+                    ++scene_resource_trace_count, edi,
+                    ZX16(MEM16(edi + 0x3Eu)), ZX16(MEM16(edi + 0x40u)),
+                    ZX16(MEM16(edi + 0x42u)), MEM32(edi + 0x4Cu),
+                    MEM32(edi + 0x50u), MEM32(edi + 0x54u));
+        }
+    }
     edx = ZX16(MEM16(edi + 0x42));
     eax = MEM32(edi + 0x54);
     ecx = MEM32(edi + 0x50);
@@ -93720,6 +93884,16 @@ loc_00044919: ;
 
 loc_0004491D: ;
     edx = MEM32(esi + 0x14);
+    {
+        static uint32_t scene_resource_tail_trace_count;
+        if (scene_resource_tail_trace_count < 32u) {
+            fprintf(stderr,
+                    "[SCENE-RESOURCE-TAIL] n=%u owner=%08X resource=%08X records=%08X used=%u tail=%08X total=%u capacity=%u\n",
+                    ++scene_resource_tail_trace_count, esi, edx,
+                    MEM32(edx + 0x1Cu), MEM32(edx + 0x24u),
+                    MEM32(edx + 0x28u), MEM32(edx + 0x30u), ebx);
+        }
+    }
     ebp = MEM32(edx + 0x24);
     _fa = (uint32_t)(ebp) & 0xFFFFFFFFu; _fb = (uint32_t)(ebx) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp ebp, ebx (32-bit) */
@@ -93782,6 +93956,15 @@ loc_00044983: ;
     eax = MEM32(eax);
     edi = MEM32(esi + 8);
     ecx = MEM32(ebx + ecx);
+    {
+        static uint32_t scene_resource_index_trace_count;
+        if (scene_resource_index_trace_count < 64u) {
+            fprintf(stderr,
+                    "[SCENE-RESOURCE-INDEX] n=%u owner=%08X slot=%u source=%08X index=%08X table=%08X item=%08X\n",
+                    ++scene_resource_index_trace_count, esi, ebp,
+                    MEM32(esp + 0x3Cu), eax, edi, ecx);
+        }
+    }
     eax = MEM32(edi + eax * 4);
     edx = MEM32(ecx);
     { uint32_t _icall_esp = g_esp;
@@ -96673,6 +96856,15 @@ loc_00045CC0: ;
     eax = MEM32(esi + 8);
     PUSH32(esp, edi);
     edi = MEM32(esp + 0x1C);
+    /* Incomplete optional light records are tagged with a high sentinel by
+     * the archive loader.  Retail's async fixup replaces it before this
+     * ref-count assignment; until that worker boundary is reproduced, treat
+     * only the unresolved sentinel as a null optional light. */
+    if (edi >= 0xA0000000u) {
+        fprintf(stderr, "[LIGHT-FIXUP-PENDING] object=%08X sentinel=%08X\n",
+                esi, edi);
+        edi = 0u;
+    }
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(edi) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp eax, edi (32-bit) */
     if (CMP_EQ(_fa, _fb)) goto loc_00045D2F; /* je: equal / zero */
@@ -127604,7 +127796,11 @@ loc_00055BC8: ;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* test ecx, ecx (32-bit) */
 
 loc_00055BCE: ;
-    if (_flags /* je: equal / zero */) goto loc_00055BD6;
+    /* This shared cleanup block is reached with the relevant comparison in
+       _fa/_fb (including the test ecx,ecx immediately above).  The generic
+       fallback flag variable is never populated for these incoming edges;
+       using it makes a null temporary call through Xbox address zero. */
+    if (CMP_EQ(_fa, _fb)) goto loc_00055BD6;
 
 loc_00055BD0: ;
     edx = MEM32(ecx);
