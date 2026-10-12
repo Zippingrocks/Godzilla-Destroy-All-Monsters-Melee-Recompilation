@@ -589,8 +589,24 @@ static int godzilla_host_xmv_present(void)
     if (InterlockedExchange(&godzilla_host_xmv_skip_requested, 0) &&
         _stricmp(x->name, "MainMenu") != 0) {
         char skipped_name[sizeof(x->name)];
-        const int begin_mainmenu = godzilla_host_xmv_pending_mainmenu;
+        int begin_mainmenu;
         strncpy_s(skipped_name, sizeof(skipped_name), x->name, _TRUNCATE);
+
+        /* Skipping the startup reel is the same frontend event as reaching
+         * its natural EOF.  Previously this branch destroyed the decoder and
+         * returned without constructing the retained PRESS START frontend.
+         * The guest then advanced with a null/stale presentation owner and
+         * crashed.  Complete the retail handoff while the final movie surface
+         * is still alive; that construction also queues MainMenu through
+         * godzilla_host_xmv_begin(). */
+        if (_stricmp(x->name, "startup-sequence") == 0) {
+            fprintf(stderr,
+                    "[HOST-XMV] completing frontend before startup skip teardown\n");
+            fflush(stderr);
+            godzilla_complete_startup_sequence();
+        }
+
+        begin_mainmenu = godzilla_host_xmv_pending_mainmenu;
         godzilla_host_xmv_pending_mainmenu = 0;
         godzilla_host_xmv_close();
         if (begin_mainmenu)
