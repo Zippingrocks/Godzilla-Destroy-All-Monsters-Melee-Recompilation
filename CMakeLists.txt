@@ -4,8 +4,22 @@ project(godzilla_damm_recomp C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(XBOXRECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../repos/Repos/xboxrecomp"
-    CACHE PATH "Path to xboxrecomp")
+set(XBOXRECOMP_DIR "" CACHE PATH "Path to xboxrecomp")
+if(NOT XBOXRECOMP_DIR)
+    foreach(XBOXRECOMP_CANDIDATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/../xboxrecomp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../repos/Repos/xboxrecomp")
+        if(EXISTS "${XBOXRECOMP_CANDIDATE}/CMakeLists.txt")
+            set(XBOXRECOMP_DIR "${XBOXRECOMP_CANDIDATE}")
+            break()
+        endif()
+    endforeach()
+endif()
+if(NOT EXISTS "${XBOXRECOMP_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "xboxrecomp was not found. Configure with "
+        "-DXBOXRECOMP_DIR=C:/path/to/xboxrecomp")
+endif()
 add_subdirectory("${XBOXRECOMP_DIR}" "${CMAKE_BINARY_DIR}/xboxrecomp")
 
 set(RECOMP_GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/game/recomp/gen"

@@ -1,0 +1,30 @@
+name: Accessibility report
+description: Report a barrier in the currently working startup or frontend flow.
+title: "[Accessibility]: "
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: What were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What barrier did you encounter?
+      description: A description is enough; do not include medical information.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+  - type: textarea
+    id: setup
+    attributes:
+      label: Input and assistive setup
+      description: List controller, keyboard, alternative input, or assistive technology relevant to the report.
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement

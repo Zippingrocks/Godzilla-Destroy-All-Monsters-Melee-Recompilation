@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security issue privately
+    url: https://github.com/Zippingrocks/Godzilla-Destroy-All-Monsters-Melee-Recompilation/security/advisories/new
+    about: Use GitHub private vulnerability reporting for security issues.
+  - name: Project status and known issues
+    url: https://github.com/Zippingrocks/Godzilla-Destroy-All-Monsters-Melee-Recompilation#status
+    about: Review current capabilities and known limitations before opening a report.

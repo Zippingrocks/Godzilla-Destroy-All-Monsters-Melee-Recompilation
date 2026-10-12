@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a crash, rendering error, movie problem, input issue, or regression.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the known issues and existing reports first. Never upload retail game files, an XBE, disc image, XMV, save, RAM dump, or decoded assets.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the startup movie or exact menu screen involved and whether it happens every time.
+      placeholder: |
+        1. Launch...
+        2. Press...
+        3. Observe...
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Paste the tested commit hash.
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System
+      description: Windows version, CPU, GPU, graphics driver, and controller/keyboard used.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs and captures
+      description: Paste the relevant log excerpt. Add a screenshot or short video for visual issues after removing personal information.
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I checked the known issues and existing reports.
+          required: true
+        - label: I have not attached retail game content or other copyrighted game data.
+          required: true

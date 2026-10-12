@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "fixture_id": "godzilla-damm-retail-xbox-us",
+  "profile_id": "godzilla-damm-retail-xbox-us",
+  "title": "Godzilla: Melee",
+  "platform": "Xbox",
+  "region": "USA",
+  "title_id": "0x49470039",
+  "xdk_version": "1.0.5233",
+  "entry_point": "0x0002A6D9",
+  "image_range": {
+    "start": "0x00010000",
+    "end": "0x004D3EA0"
+  },
+  "source_files": {
+    "default.xbe": {
+      "sha256": "9d0ba935e89fc36d4c6895f5a9cc8afad2e05cdd17e9183517595e404da300b8"
+    }
+  },
+  "expected": {
+    "detected_functions": 6158,
+    "lifted_functions": 5277,
+    "instructions": 371961,
+    "cross_references": 66380,
+    "strings": 2678
+  },
+  "notes": [
+    "The hash pins the executable used for this recompilation and parity work.",
+    "No retail executable or game content is stored in this repository.",
+    "Other regions or revisions require independent fixtures and validation."
+  ]
+}

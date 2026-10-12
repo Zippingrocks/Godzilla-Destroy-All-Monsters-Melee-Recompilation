@@ -1,6 +1,10 @@
 # Retail game content must be supplied by the user.
 /game_files/
 /SaveData/
+*.xbe
+*.iso
+*.xiso
+*.xmv
 
 # Locally decoded retail video frames.
 /assets/*.yuy2
@@ -18,6 +22,7 @@
 /.tools/
 /.vs/
 /out/
+/captures/
 *.obj
 *.pdb
 *.ilk
@@ -43,3 +48,6 @@
 Thumbs.db
 *.user
 *.suo
+__pycache__/
+*.py[cod]
+.pytest_cache/

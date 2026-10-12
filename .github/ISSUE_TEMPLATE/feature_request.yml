@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement to the recompilation or its development tooling.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: Check the roadmap and existing issues first. The current priority is an accurate, stable frontend before gameplay expansion.
+  - type: textarea
+    id: use_case
+    attributes:
+      label: What would you like to do?
+      description: Describe the problem or use case rather than only the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested change
+      description: Explain how it should work and which part of the recompilation it affects.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Retail or technical evidence
+      description: Include relevant callbacks, traces, Xemu behavior, or comparable projects if applicable.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and context
+      description: Mention current workarounds, related issues, and important tradeoffs.
